@@ -841,11 +841,37 @@ def _cam_create_operation(p: dict) -> dict:
 
 
 def _cam_generate_toolpath(p: dict) -> dict:
+    """Mirror the addon: a completed future is not a successful toolpath.
+
+    The mock reports the same per-operation status the addon reads back, so a
+    caller can write a gate against ``failures`` and have it behave the same
+    in mock mode and in Fusion.
+    """
+    name = p.get("operation_name") or "Operation1"
+    if p.get("generate_all"):
+        scope = "all"
+    elif p.get("operation_name"):
+        scope = "operation"
+    else:
+        scope = "setup"
+
+    status = {
+        "name": name,
+        "has_toolpath": True,
+        "is_toolpath_valid": True,
+        "has_error": False,
+        "error": "",
+        "has_warning": False,
+        "warning": "",
+    }
     return {
-        "setup_name": p.get("setup_name", "Setup1"),
-        "operation_name": p.get("operation_name"),
+        "scope": scope,
+        "generation_completed": True,
+        "operations_total": 1,
+        "operations_completed": 1,
         "generated": True,
-        "toolpath_count": 1,
+        "failures": [],
+        "operations": [status],
     }
 
 

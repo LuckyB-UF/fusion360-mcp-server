@@ -2539,31 +2539,69 @@ class CommandHandler:
         except Exception as exc:
             return None, {"readback_failed": str(exc)}
 
-    def _find_tool_by_number(self, cam, tool_number: int):
-        """Return the document-library tool carrying this tool number."""
-        try:
-            library = cam.documentToolLibrary
-        except Exception as exc:
-            raise RuntimeError(f"Cannot reach the document tool library: {exc}")
-        if library is None or library.count == 0:
-            raise RuntimeError(
-                "The document tool library is empty. Add the tool to the "
-                "document in Fusion first, or pass tool_diameter instead of "
-                "tool_number."
-            )
-        available = []
+    @staticmethod
+    def _scan_library_for_tool(library, tool_number: int):
+        """Return (tool, numbers_seen) for one tool library."""
+        seen = []
+        if library is None:
+            return None, seen
         for i in range(library.count):
             tool = library.item(i)
             try:
                 number = int(tool.parameters.itemByName("tool_number").value.value)
             except Exception:
                 continue
-            available.append(number)
+            seen.append(number)
             if number == int(tool_number):
-                return tool
+                return tool, seen
+        return None, seen
+
+    def _local_tool_library(self):
+        """Return the user's local tool library, or None if unreachable."""
+        try:
+            libraries = adsk.cam.CAMManager.get().libraryManager.toolLibraries
+            root = libraries.urlByLocation(
+                adsk.cam.LibraryLocations.LocalLibraryLocation
+            )
+            urls = libraries.childAssetURLs(root)
+            if not urls:
+                return None
+            return libraries.toolLibraryAtURL(urls[0])
+        except Exception:
+            return None
+
+    def _find_tool_by_number(self, cam, tool_number: int):
+        """Return the tool carrying this tool number.
+
+        The document tool library is searched first, then the local library.
+        An operation can only use a tool that exists in the document library,
+        but assigning a library tool copies it in, so the local library is a
+        valid source rather than a shortcut.
+        """
+        try:
+            document_library = cam.documentToolLibrary
+        except Exception as exc:
+            raise RuntimeError(f"Cannot reach the document tool library: {exc}")
+
+        tool, in_document = self._scan_library_for_tool(
+            document_library, tool_number
+        )
+        if tool is not None:
+            return tool
+
+        tool, in_local = self._scan_library_for_tool(
+            self._local_tool_library(), tool_number
+        )
+        if tool is not None:
+            return tool
+
         raise RuntimeError(
-            f"No tool numbered {tool_number} in the document tool library. "
-            f"Available tool numbers: {sorted(available)}"
+            f"No tool numbered {tool_number} in the document tool library "
+            f"(holds {sorted(in_document)}) or the local tool library "
+            f"(holds {sorted(in_local)}). Add the tool in Fusion, or pass "
+            "tool_diameter instead of tool_number. A tool_diameter alone "
+            "cannot generate a toolpath: Fusion reports 'Toolpath requires "
+            "tool to be selected.'"
         )
 
     def cam_create_setup(
@@ -2657,9 +2695,9 @@ class CommandHandler:
         setup = self._find_setup(cam, setup_name)
 
         op_input = setup.operations.createInput(strategy)
-        if name:
-            op_input.name = name
 
+        # OperationInput carries no name property either, so the operation is
+        # renamed after it is added.
         # OperationInput carries no toolDiameter, maximumStepdown or
         # maximumStepover property. Assigning those names to the SWIG proxy
         # succeeds silently and reaches nothing, so every cutting value goes
@@ -2670,6 +2708,8 @@ class CommandHandler:
             tool_source = f"document tool library, tool number {tool_number}"
 
         op = setup.operations.add(op_input)
+        if name:
+            op.name = name
 
         applied = {}
         failed = {}
@@ -2707,40 +2747,91 @@ class CommandHandler:
             "failed": failed,
         }
 
+    _GENERATION_TIMEOUT_SECONDS = 25
+
+    def _await_generation(self, future):
+        """Pump the event loop until generation finishes or time runs out.
+
+        GenerateToolpathFuture has no wait() method. It exposes
+        isGenerationCompleted, so the caller polls it while releasing the main
+        thread through adsk.doEvents().
+        """
+        deadline = time.time() + self._GENERATION_TIMEOUT_SECONDS
+        while not future.isGenerationCompleted and time.time() < deadline:
+            adsk.doEvents()
+        return future.isGenerationCompleted
+
+    @staticmethod
+    def _operation_status(op):
+        """Read the real generation result off one operation."""
+        return {
+            "name": op.name,
+            "has_toolpath": op.hasToolpath,
+            "is_toolpath_valid": op.isToolpathValid,
+            "has_error": op.hasError,
+            "error": (op.error or "").strip(),
+            "has_warning": op.hasWarning,
+            "warning": (op.warning or "").strip(),
+        }
+
     def cam_generate_toolpath(
         self,
         setup_name: str = None,
         operation_name: str = None,
         generate_all: bool = False,
     ):
+        """Generate toolpaths and report what each operation actually produced.
+
+        The future carries no error information of any kind, so a completed
+        future is not a successful toolpath. Every targeted operation is read
+        back afterwards for hasError, error, isToolpathValid and hasToolpath,
+        which is the only failure signal Fusion exposes.
+        """
         cam = self._get_cam()
+        targets = []
 
         if generate_all:
             future = cam.generateAllToolpaths(False)
-            future.wait()
-            return {"generated": True, "scope": "all"}
-
-        if operation_name and setup_name:
+            for i in range(cam.setups.count):
+                setup = cam.setups.item(i)
+                for j in range(setup.operations.count):
+                    targets.append(setup.operations.item(j))
+            scope = "all"
+        elif operation_name and setup_name:
             setup = self._find_setup(cam, setup_name)
             op = self._find_operation(setup, operation_name)
             future = cam.generateToolpath(op)
-            future.wait()
-            return {
-                "generated": True,
-                "scope": "operation",
-                "operation": operation_name,
-            }
-
-        if setup_name:
+            targets.append(op)
+            scope = "operation"
+        elif setup_name:
             setup = self._find_setup(cam, setup_name)
             ops = adsk.core.ObjectCollection.create()
             for i in range(setup.operations.count):
-                ops.add(setup.operations.item(i))
+                op = setup.operations.item(i)
+                ops.add(op)
+                targets.append(op)
             future = cam.generateToolpath(ops)
-            future.wait()
-            return {"generated": True, "scope": "setup", "setup": setup_name}
+            scope = "setup"
+        else:
+            raise RuntimeError(
+                "Provide setup_name, operation_name, or generate_all=true"
+            )
 
-        raise RuntimeError("Provide setup_name, operation_name, or generate_all=true")
+        completed = self._await_generation(future)
+        statuses = [self._operation_status(op) for op in targets]
+        failures = [
+            s for s in statuses if s["has_error"] or not s["is_toolpath_valid"]
+        ]
+
+        return {
+            "scope": scope,
+            "generation_completed": completed,
+            "operations_total": future.numberOfOperations,
+            "operations_completed": future.numberOfCompleted,
+            "generated": bool(completed and targets and not failures),
+            "failures": failures,
+            "operations": statuses,
+        }
 
     def cam_post_process(
         self,

@@ -876,8 +876,21 @@ class TestMockCAM:
             },
         )
         assert result["generated"] is True
-        assert result["toolpath_count"] >= 1
+        assert result["scope"] == "setup"
 
+    def test_cam_generate_toolpath_reports_per_operation_status(self):
+        """Success is read off each operation, not off the future."""
+        result = mock_command(
+            "cam_generate_toolpath",
+            {"setup_name": "Setup1", "operation_name": "Rough1"},
+        )
+        assert result["generation_completed"] is True
+        assert result["failures"] == []
+        status = result["operations"][0]
+        assert status["name"] == "Rough1"
+        assert status["is_toolpath_valid"] is True
+        assert status["has_error"] is False
+        assert status["error"] == ''
     def test_cam_post_process(self):
         result = mock_command(
             "cam_post_process",
