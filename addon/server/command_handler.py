@@ -260,6 +260,20 @@ class CommandHandler:
     # ------------------------------------------------------------------
 
     def _design(self):
+        """Return the document's Design product.
+
+        Resolved by product type rather than through ``activeProduct``.
+        ``activeProduct`` follows the frontmost workspace tab, so while the
+        Manufacturing tab is in front it returns the CAM product, and every
+        design-side call then fails on a missing ``rootComponent`` or
+        ``designType``. The document carries both products at once, so asking
+        for the Design product by type works from any tab.
+        """
+        doc = self.app.activeDocument
+        if doc is not None:
+            product = doc.products.itemByProductType("DesignProductType")
+            if product is not None:
+                return product
         d = self.app.activeProduct
         if d is None:
             raise RuntimeError("No active design")
