@@ -868,6 +868,18 @@ class TestMockCAM:
         )
         assert "0.6 cm" in by_diameter["tool"]
 
+    def test_cam_list_strategies_splits_turning_from_milling(self):
+        """Strategy names are Fusion's internal names, not the UI titles."""
+        result = mock_command("cam_list_strategies", {"setup_name": "TurnSetup"})
+        assert result["setup"] == "TurnSetup"
+        turning = [s["name"] for s in result["turning"]]
+        milling = [s["name"] for s in result["milling"]]
+        assert "turning_profile_roughing" in turning
+        assert "contour2d" in milling
+        # The names the old enum used never existed.
+        assert "2d_contour" not in milling
+        assert "drilling" not in milling
+
     def test_cam_generate_toolpath(self):
         result = mock_command(
             "cam_generate_toolpath",

@@ -165,6 +165,7 @@ def test_expected_tools_present():
         "cam_post_process",
         "cam_list_setups",
         "cam_list_operations",
+        "cam_list_strategies",
         "cam_get_operation_info",
         # design type safety
         "get_design_type",

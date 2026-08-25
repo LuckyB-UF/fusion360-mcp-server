@@ -1875,24 +1875,24 @@ TOOLS: list[dict] = [
                 },
                 "strategy": {
                     "type": "string",
-                    "enum": [
-                        "face",
-                        "2d_contour",
-                        "2d_pocket",
-                        "2d_adaptive",
-                        "3d_adaptive",
-                        "3d_pocket",
-                        "3d_contour",
-                        "3d_scallop",
-                        "3d_parallel",
-                        "drilling",
-                        "bore",
-                        "thread_milling",
-                        "slot",
-                        "trace",
-                        "engrave",
-                    ],
-                    "description": "Machining strategy",
+                    "description": (
+                        "Machining strategy, under the name Fusion uses "
+                        "internally. Milling: face, contour2d, pocket2d, "
+                        "adaptive2d, adaptive, drill, bore, engrave, trace, "
+                        "slot, parallel, scallop, steep_and_shallow, "
+                        "horizontal, pencil, radial, spiral, ramp, morph, "
+                        "swarf, deburr, thread, chamfer2d, profile2d, "
+                        "pocket_clearing, contour3d. Turning: turning_face, "
+                        "turning_profile, turning_profile_roughing, "
+                        "turning_profile_finishing, turning_groove_roughing, "
+                        "turning_groove_finishing, turning_single_groove, "
+                        "turning_chamfer, turning_thread, turning_part, "
+                        "turning_trace, turning_adaptive_roughing, bar_pull. "
+                        "There is no fixed enum: the valid set comes from "
+                        "Operations.compatibleStrategies and depends on the "
+                        "setup, so call cam_list_strategies rather than "
+                        "guessing."
+                    ),
                 },
                 "name": {
                     "type": "string",
@@ -2022,6 +2022,25 @@ TOOLS: list[dict] = [
             "properties": {
                 "setup_name": {
                     "type": "string",
+                },
+            },
+        },
+    },
+    {
+        "name": "cam_list_strategies",
+        "title": "List Compatible CAM Strategies",
+        "description": (
+            "List the machining strategies a setup accepts, split into "
+            "turning and milling. Call this before cam_create_operation "
+            "instead of guessing a strategy name."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "required": ["setup_name"],
+            "properties": {
+                "setup_name": {
+                    "type": "string",
+                    "description": "Setup to query",
                 },
             },
         },

@@ -840,6 +840,43 @@ def _cam_create_operation(p: dict) -> dict:
     }
 
 
+def _cam_list_strategies(p: dict) -> dict:
+    """A representative slice of a real turning setup's compatible list.
+
+    Names are Fusion's internal strategy names, read off a live turning setup,
+    not the friendlier titles shown in the UI.
+    """
+    return {
+        "setup": p.get("setup_name", "Setup1"),
+        "turning": [
+            {"name": "turning_face", "title": "Turning Face"},
+            {
+                "name": "turning_profile_roughing",
+                "title": "Turning Profile Roughing",
+            },
+            {
+                "name": "turning_profile_finishing",
+                "title": "Turning Profile Finishing",
+            },
+            {
+                "name": "turning_groove_roughing",
+                "title": "Turning Groove Roughing",
+            },
+            {"name": "turning_thread", "title": "Turning Thread"},
+            {"name": "turning_part", "title": "Turning Part"},
+        ],
+        "milling": [
+            {"name": "face", "title": "Face"},
+            {"name": "contour2d", "title": "2D Contour"},
+            {"name": "pocket2d", "title": "2D Pocket"},
+            {"name": "adaptive2d", "title": "2D Adaptive Clearing"},
+            {"name": "drill", "title": "Drill"},
+            {"name": "bore", "title": "Bore"},
+        ],
+        "count": 12,
+    }
+
+
 def _cam_generate_toolpath(p: dict) -> dict:
     """Mirror the addon: a completed future is not a successful toolpath.
 
@@ -1050,6 +1087,7 @@ _DISPATCH: dict[str, Any] = {
     "unfold": _unfold,
     # CAM / manufacturing
     "cam_create_setup": _cam_create_setup,
+    "cam_list_strategies": _cam_list_strategies,
     "cam_create_operation": _cam_create_operation,
     "cam_generate_toolpath": _cam_generate_toolpath,
     "cam_post_process": _cam_post_process,

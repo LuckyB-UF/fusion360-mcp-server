@@ -199,6 +199,7 @@ class CommandHandler:
                 # CAM
                 "cam_list_setups": self.cam_list_setups,
                 "cam_list_operations": self.cam_list_operations,
+                "cam_list_strategies": self.cam_list_strategies,
                 "cam_get_operation_info": self.cam_get_operation_info,
                 "cam_create_setup": self.cam_create_setup,
                 "cam_create_operation": self.cam_create_operation,
@@ -2479,6 +2480,32 @@ class CommandHandler:
             )
         return {"setup": setup_name, "operations": result, "count": len(result)}
 
+    def cam_list_strategies(self, setup_name: str):
+        """List the strategies this setup actually accepts.
+
+        Operations.compatibleStrategies is a live list, not a fixed enum: it
+        depends on the setup's operation type and on what the document
+        supports. A hardcoded strategy list goes stale and produces failures
+        that look like modelling errors, so callers should ask instead of
+        guess.
+        """
+        cam = self._get_cam()
+        setup = self._find_setup(cam, setup_name)
+        milling = []
+        turning = []
+        for strategy in setup.operations.compatibleStrategies:
+            row = {"name": strategy.name, "title": strategy.title}
+            if strategy.isTurningStrategy:
+                turning.append(row)
+            else:
+                milling.append(row)
+        return {
+            "setup": setup_name,
+            "turning": turning,
+            "milling": milling,
+            "count": len(turning) + len(milling),
+        }
+
     def cam_get_operation_info(self, setup_name: str, operation_name: str):
         cam = self._get_cam()
         setup = self._find_setup(cam, setup_name)
@@ -2694,7 +2721,14 @@ class CommandHandler:
         cam = self._get_cam()
         setup = self._find_setup(cam, setup_name)
 
-        op_input = setup.operations.createInput(strategy)
+        try:
+            op_input = setup.operations.createInput(strategy)
+        except Exception as exc:
+            raise RuntimeError(
+                f"Strategy '{strategy}' is not valid for setup '{setup_name}': "
+                f"{exc}. Call cam_list_strategies for the strategies this "
+                "setup accepts."
+            )
 
         # Adding an operation generates its toolpath straight away by default.
         # A toolpath that cannot generate then raises a MODAL dialog inside
