@@ -2696,6 +2696,18 @@ class CommandHandler:
 
         op_input = setup.operations.createInput(strategy)
 
+        # Adding an operation generates its toolpath straight away by default.
+        # A toolpath that cannot generate then raises a MODAL dialog inside
+        # Fusion ("Failed to generate toolpath - no tool selected."), which
+        # blocks the main thread until a person clicks OK and takes the whole
+        # command bridge down with it. Creating the operation and generating
+        # it are separate tools here, so creation always skips generation and
+        # cam_generate_toolpath owns that step.
+        try:
+            op_input.generationMode = adsk.cam.AutomaticGenerationModes.SkipGeneration
+        except Exception:
+            pass
+
         # OperationInput carries no name property either, so the operation is
         # renamed after it is added.
         # OperationInput carries no toolDiameter, maximumStepdown or
