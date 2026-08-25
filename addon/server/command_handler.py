@@ -2492,6 +2492,56 @@ class CommandHandler:
 
         return info
 
+    @staticmethod
+    def _set_cam_param(params, param_name: str, expression=None, value=None):
+        """Set one CAM parameter.
+
+        Returns None on success, or a string saying why it did not apply.
+        Callers collect these strings instead of raising, so one unsupported
+        parameter never discards the whole setup or operation.
+        """
+        try:
+            param = params.itemByName(param_name)
+        except Exception as exc:
+            return f"lookup failed: {exc}"
+        if param is None:
+            return "parameter not present on this object"
+        try:
+            if value is not None:
+                param.value.value = value
+            else:
+                param.expression = expression
+        except Exception as exc:
+            return str(exc)
+        return None
+
+    def _find_tool_by_number(self, cam, tool_number: int):
+        """Return the document-library tool carrying this tool number."""
+        try:
+            library = cam.documentToolLibrary
+        except Exception as exc:
+            raise RuntimeError(f"Cannot reach the document tool library: {exc}")
+        if library is None or library.count == 0:
+            raise RuntimeError(
+                "The document tool library is empty. Add the tool to the "
+                "document in Fusion first, or pass tool_diameter instead of "
+                "tool_number."
+            )
+        available = []
+        for i in range(library.count):
+            tool = library.item(i)
+            try:
+                number = int(tool.parameters.itemByName("tool_number").value.value)
+            except Exception:
+                continue
+            available.append(number)
+            if number == int(tool_number):
+                return tool
+        raise RuntimeError(
+            f"No tool numbered {tool_number} in the document tool library. "
+            f"Available tool numbers: {sorted(available)}"
+        )
+
     def cam_create_setup(
         self,
         body_name: str,
@@ -2517,6 +2567,15 @@ class CommandHandler:
                 "— use milling/turning/cutting"
             )
 
+        if stock_mode != "relative_box":
+            raise RuntimeError(
+                f"stock_mode '{stock_mode}' cannot be applied through this tool. "
+                "'fixed_box' needs explicit stock dimensions and 'from_body' "
+                "needs a stock body, and neither argument exists on this tool. "
+                "Use 'relative_box' with the stock_offset_* arguments, or set "
+                "the stock mode through execute_code."
+            )
+
         setup_input = cam.setups.createInput(op_type)
         setup_input.models = [body]
 
@@ -2524,7 +2583,38 @@ class CommandHandler:
             setup_input.name = name
 
         setup = cam.setups.add(setup_input)
-        return {"name": setup.name, "body": body_name, "operation_type": operation_type}
+
+        applied = {}
+        failed = {}
+
+        try:
+            setup.stockMode = adsk.cam.SetupStockModes.RelativeBoxStock
+            applied["stock_mode"] = stock_mode
+        except Exception as exc:
+            failed["stock_mode"] = str(exc)
+
+        wanted = [
+            ("job_stockOffsetMode", "'simple'", "simple"),
+            ("job_stockOffsetSides", f"{stock_offset_sides} cm", stock_offset_sides),
+            ("job_stockOffsetTop", f"{stock_offset_top} cm", stock_offset_top),
+            ("job_stockOffsetBottom", f"{stock_offset_bottom} cm", stock_offset_bottom),
+        ]
+        for param_name, expression, reported in wanted:
+            error = self._set_cam_param(
+                setup.parameters, param_name, expression=expression
+            )
+            if error:
+                failed[param_name] = error
+            else:
+                applied[param_name] = reported
+
+        return {
+            "name": setup.name,
+            "body": body_name,
+            "operation_type": operation_type,
+            "applied": applied,
+            "failed": failed,
+        }
 
     def cam_create_operation(
         self,
@@ -2545,15 +2635,52 @@ class CommandHandler:
         op_input = setup.operations.createInput(strategy)
         if name:
             op_input.name = name
-        if tool_diameter:
+
+        tool_source = None
+        if tool_number is not None:
+            op_input.tool = self._find_tool_by_number(cam, tool_number)
+            tool_source = f"document tool library, tool number {tool_number}"
+        elif tool_diameter:
             op_input.toolDiameter = adsk.core.ValueInput.createByReal(tool_diameter)
+            tool_source = f"diameter {tool_diameter} cm"
+
         if stepdown:
             op_input.maximumStepdown = adsk.core.ValueInput.createByReal(stepdown)
         if stepover:
             op_input.maximumStepover = adsk.core.ValueInput.createByReal(stepover)
 
         op = setup.operations.add(op_input)
-        return {"name": op.name, "setup": setup_name, "strategy": strategy}
+
+        applied = {}
+        failed = {}
+
+        wanted = []
+        if feed_rate is not None:
+            wanted.append(
+                ("tool_feedCutting", {"expression": f"{feed_rate} cm/min"}, feed_rate)
+            )
+        if spindle_speed is not None:
+            wanted.append(
+                ("tool_spindleSpeed", {"value": int(spindle_speed)}, int(spindle_speed))
+            )
+        if coolant:
+            wanted.append(("tool_coolant", {"expression": f"'{coolant}'"}, coolant))
+
+        for param_name, how, reported in wanted:
+            error = self._set_cam_param(op.parameters, param_name, **how)
+            if error:
+                failed[param_name] = error
+            else:
+                applied[param_name] = reported
+
+        return {
+            "name": op.name,
+            "setup": setup_name,
+            "strategy": strategy,
+            "tool": tool_source,
+            "applied": applied,
+            "failed": failed,
+        }
 
     def cam_generate_toolpath(
         self,

@@ -781,6 +781,61 @@ class TestMockCAM:
         assert result["strategy"] == "2d_adaptive"
         assert result["operation_name"] == "Rough1"
 
+    def test_cam_create_setup_reports_applied_stock_offsets(self):
+        """Stock offsets are applied and reported, not silently dropped."""
+        result = mock_command(
+            "cam_create_setup",
+            {
+                "body_name": "Part1",
+                "stock_offset_sides": 0.2,
+                "stock_offset_top": 0.5,
+            },
+        )
+        assert result["applied"]["job_stockOffsetSides"] == 0.2
+        assert result["applied"]["job_stockOffsetTop"] == 0.5
+        assert result["applied"]["job_stockOffsetMode"] == "simple"
+        assert result["failed"] == {}
+
+    def test_cam_create_setup_rejects_unsupported_stock_mode(self):
+        """fixed_box has no dimension arguments, so it must fail loudly."""
+        result = mock_command(
+            "cam_create_setup",
+            {"body_name": "Part1", "stock_mode": "fixed_box"},
+        )
+        assert result["ok"] is False
+        assert "fixed_box" in result["error_message"]
+
+    def test_cam_create_operation_applies_feed_speed_coolant(self):
+        """Feed, speed and coolant reach the operation and are reported."""
+        result = mock_command(
+            "cam_create_operation",
+            {
+                "setup_name": "Setup1",
+                "strategy": "2d_adaptive",
+                "feed_rate": 80.0,
+                "spindle_speed": 9000,
+                "coolant": "mist",
+            },
+        )
+        assert result["applied"]["tool_feedCutting"] == 80.0
+        assert result["applied"]["tool_spindleSpeed"] == 9000
+        assert result["applied"]["tool_coolant"] == "mist"
+        assert result["failed"] == {}
+
+    def test_cam_create_operation_reports_tool_source(self):
+        """A tool number is reported as a library lookup, not a bare diameter."""
+        by_number = mock_command(
+            "cam_create_operation",
+            {"setup_name": "Setup1", "strategy": "2d_contour", "tool_number": 4},
+        )
+        assert "tool number 4" in by_number["tool"]
+
+        by_diameter = mock_command(
+            "cam_create_operation",
+            {"setup_name": "Setup1", "strategy": "2d_contour", "tool_diameter": 0.6},
+        )
+        assert "0.6 cm" in by_diameter["tool"]
+
     def test_cam_generate_toolpath(self):
         result = mock_command(
             "cam_generate_toolpath",

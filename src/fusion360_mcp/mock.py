@@ -744,20 +744,65 @@ def _unfold(p: dict) -> dict:
 
 
 def _cam_create_setup(p: dict) -> dict:
+    stock_mode = p.get("stock_mode", "relative_box")
+    if stock_mode != "relative_box":
+        message = (
+            f"stock_mode '{stock_mode}' cannot be applied through this tool. "
+            "'fixed_box' needs explicit stock dimensions and 'from_body' "
+            "needs a stock body, and neither argument exists on this tool. "
+            "Use 'relative_box' with the stock_offset_* arguments, or set "
+            "the stock mode through execute_code."
+        )
+        kind, hint_list = _classify(message)
+        return {
+            "ok": False,
+            "error_kind": kind,
+            "error_message": message,
+            "hints": hint_list,
+            "traceback": f"MockError: {message}",
+            "mode": "mock",
+        }
     return {
         "setup_name": p.get("name", "Setup1"),
         "body_name": p.get("body_name", "Body1"),
         "operation_type": p.get("operation_type", "milling"),
-        "stock_mode": p.get("stock_mode", "relative_box"),
+        "stock_mode": stock_mode,
+        "applied": {
+            "stock_mode": stock_mode,
+            "job_stockOffsetMode": "simple",
+            "job_stockOffsetSides": p.get("stock_offset_sides", 0),
+            "job_stockOffsetTop": p.get("stock_offset_top", 0),
+            "job_stockOffsetBottom": p.get("stock_offset_bottom", 0),
+        },
+        "failed": {},
     }
 
 
 def _cam_create_operation(p: dict) -> dict:
+    applied = {}
+    if p.get("feed_rate") is not None:
+        applied["tool_feedCutting"] = p["feed_rate"]
+    if p.get("spindle_speed") is not None:
+        applied["tool_spindleSpeed"] = int(p["spindle_speed"])
+    coolant = p.get("coolant", "flood")
+    if coolant:
+        applied["tool_coolant"] = coolant
+
+    if p.get("tool_number") is not None:
+        tool_source = f"document tool library, tool number {p['tool_number']}"
+    elif p.get("tool_diameter"):
+        tool_source = f"diameter {p['tool_diameter']} cm"
+    else:
+        tool_source = None
+
     return {
         "setup_name": p.get("setup_name", "Setup1"),
         "operation_name": p.get("name", "Operation1"),
         "strategy": p.get("strategy", "2d_contour"),
         "tool_diameter": p.get("tool_diameter", 0.6),
+        "tool": tool_source,
+        "applied": applied,
+        "failed": {},
     }
 
 
