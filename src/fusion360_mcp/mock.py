@@ -762,31 +762,36 @@ def _cam_create_setup(p: dict) -> dict:
             "traceback": f"MockError: {message}",
             "mode": "mock",
         }
+    offsets = {
+        "job_stockOffsetSides": p.get("stock_offset_sides", 0),
+        "job_stockOffsetTop": p.get("stock_offset_top", 0),
+        "job_stockOffsetBottom": p.get("stock_offset_bottom", 0),
+    }
+    applied = {
+        "stock_mode": {"value": 1},
+        "job_stockOffsetMode": {"expression": "'simple'", "value": "simple"},
+    }
+    for name, value in offsets.items():
+        applied[name] = {"expression": f"{value} cm", "value": value}
+
     return {
         "setup_name": p.get("name", "Setup1"),
         "body_name": p.get("body_name", "Body1"),
         "operation_type": p.get("operation_type", "milling"),
         "stock_mode": stock_mode,
-        "applied": {
-            "stock_mode": stock_mode,
-            "job_stockOffsetMode": "simple",
-            "job_stockOffsetSides": p.get("stock_offset_sides", 0),
-            "job_stockOffsetTop": p.get("stock_offset_top", 0),
-            "job_stockOffsetBottom": p.get("stock_offset_bottom", 0),
-        },
+        "applied": applied,
         "failed": {},
     }
 
 
 def _cam_create_operation(p: dict) -> dict:
+    """Mirror the addon: report Fusion's read-back, not the request.
+
+    Lengths are given in cm and stored in mm, so the read-back value is ten
+    times the argument. The mock reproduces that so a caller testing against
+    ``--mode mock`` sees the same shape and the same unit shift as Fusion.
+    """
     applied = {}
-    if p.get("feed_rate") is not None:
-        applied["tool_feedCutting"] = p["feed_rate"]
-    if p.get("spindle_speed") is not None:
-        applied["tool_spindleSpeed"] = int(p["spindle_speed"])
-    coolant = p.get("coolant", "flood")
-    if coolant:
-        applied["tool_coolant"] = coolant
 
     if p.get("tool_number") is not None:
         tool_source = f"document tool library, tool number {p['tool_number']}"
@@ -794,6 +799,35 @@ def _cam_create_operation(p: dict) -> dict:
         tool_source = f"diameter {p['tool_diameter']} cm"
     else:
         tool_source = None
+
+    if p.get("tool_number") is None and p.get("tool_diameter"):
+        applied["tool_diameter"] = {
+            "expression": f"{p['tool_diameter']} cm",
+            "value": p["tool_diameter"],
+        }
+    if p.get("stepdown"):
+        applied["maximumStepdown"] = {
+            "expression": f"{p['stepdown']} cm",
+            "value": p["stepdown"],
+        }
+    if p.get("stepover"):
+        applied["stepover"] = {
+            "expression": f"{p['stepover']} cm",
+            "value": p["stepover"],
+        }
+    if p.get("feed_rate") is not None:
+        applied["tool_feedCutting"] = {
+            "expression": f"{p['feed_rate']} cm/min",
+            "value": p["feed_rate"] * 10,
+        }
+    if p.get("spindle_speed") is not None:
+        applied["tool_spindleSpeed"] = {
+            "expression": f"{int(p['spindle_speed'])}.rpm",
+            "value": float(int(p["spindle_speed"])),
+        }
+    coolant = p.get("coolant", "flood")
+    if coolant:
+        applied["tool_coolant"] = {"expression": f"'{coolant}'", "value": coolant}
 
     return {
         "setup_name": p.get("setup_name", "Setup1"),

@@ -791,9 +791,9 @@ class TestMockCAM:
                 "stock_offset_top": 0.5,
             },
         )
-        assert result["applied"]["job_stockOffsetSides"] == 0.2
-        assert result["applied"]["job_stockOffsetTop"] == 0.5
-        assert result["applied"]["job_stockOffsetMode"] == "simple"
+        assert result["applied"]["job_stockOffsetSides"]["value"] == 0.2
+        assert result["applied"]["job_stockOffsetTop"]["value"] == 0.5
+        assert result["applied"]["job_stockOffsetMode"]["value"] == "simple"
         assert result["failed"] == {}
 
     def test_cam_create_setup_rejects_unsupported_stock_mode(self):
@@ -817,10 +817,42 @@ class TestMockCAM:
                 "coolant": "mist",
             },
         )
-        assert result["applied"]["tool_feedCutting"] == 80.0
-        assert result["applied"]["tool_spindleSpeed"] == 9000
-        assert result["applied"]["tool_coolant"] == "mist"
+        # Fusion stores lengths in mm, so 80 cm/min reads back as 800.
+        assert result["applied"]["tool_feedCutting"]["value"] == 800.0
+        assert result["applied"]["tool_feedCutting"]["expression"] == "80.0 cm/min"
+        assert result["applied"]["tool_spindleSpeed"]["value"] == 9000.0
+        assert result["applied"]["tool_coolant"]["value"] == "mist"
         assert result["failed"] == {}
+
+    def test_cam_create_operation_applies_cutting_geometry(self):
+        """tool_diameter, stepdown and stepover are CAM parameters, not
+        OperationInput properties, and must reach the operation."""
+        result = mock_command(
+            "cam_create_operation",
+            {
+                "setup_name": "Setup1",
+                "strategy": "2d_adaptive",
+                "tool_diameter": 1.0,
+                "stepdown": 0.4,
+                "stepover": 0.6,
+            },
+        )
+        assert result["applied"]["tool_diameter"]["value"] == 1.0
+        assert result["applied"]["maximumStepdown"]["value"] == 0.4
+        assert result["applied"]["stepover"]["value"] == 0.6
+
+    def test_cam_create_operation_leaves_library_tool_diameter_alone(self):
+        """A library tool carries its own diameter, so do not override it."""
+        result = mock_command(
+            "cam_create_operation",
+            {
+                "setup_name": "Setup1",
+                "strategy": "2d_contour",
+                "tool_number": 4,
+                "tool_diameter": 1.0,
+            },
+        )
+        assert "tool_diameter" not in result["applied"]
 
     def test_cam_create_operation_reports_tool_source(self):
         """A tool number is reported as a library lookup, not a bare diameter."""

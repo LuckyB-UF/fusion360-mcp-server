@@ -2508,26 +2508,36 @@ class CommandHandler:
 
     @staticmethod
     def _set_cam_param(params, param_name: str, expression=None, value=None):
-        """Set one CAM parameter.
+        """Set one CAM parameter and read the result back out of Fusion.
 
-        Returns None on success, or a string saying why it did not apply.
-        Callers collect these strings instead of raising, so one unsupported
+        Returns ``(error, readback)``. On success ``error`` is None and
+        ``readback`` is the expression and value Fusion actually holds, which
+        is not always what was asked for: units are converted into the
+        document's internal units, and a parameter that the strategy does not
+        use can accept an expression and still evaluate to zero. Reporting the
+        request back instead of the read-back is what made these arguments
+        look applied when they were not.
+
+        Callers collect errors instead of raising, so one unsupported
         parameter never discards the whole setup or operation.
         """
         try:
             param = params.itemByName(param_name)
         except Exception as exc:
-            return f"lookup failed: {exc}"
+            return f"lookup failed: {exc}", None
         if param is None:
-            return "parameter not present on this object"
+            return "parameter not present on this object", None
         try:
             if value is not None:
                 param.value.value = value
             else:
                 param.expression = expression
         except Exception as exc:
-            return str(exc)
-        return None
+            return str(exc), None
+        try:
+            return None, {"expression": param.expression, "value": param.value.value}
+        except Exception as exc:
+            return None, {"readback_failed": str(exc)}
 
     def _find_tool_by_number(self, cam, tool_number: int):
         """Return the document-library tool carrying this tool number."""
@@ -2603,24 +2613,24 @@ class CommandHandler:
 
         try:
             setup.stockMode = adsk.cam.SetupStockModes.RelativeBoxStock
-            applied["stock_mode"] = stock_mode
+            applied["stock_mode"] = {"value": int(setup.stockMode)}
         except Exception as exc:
             failed["stock_mode"] = str(exc)
 
         wanted = [
-            ("job_stockOffsetMode", "'simple'", "simple"),
-            ("job_stockOffsetSides", f"{stock_offset_sides} cm", stock_offset_sides),
-            ("job_stockOffsetTop", f"{stock_offset_top} cm", stock_offset_top),
-            ("job_stockOffsetBottom", f"{stock_offset_bottom} cm", stock_offset_bottom),
+            ("job_stockOffsetMode", "'simple'"),
+            ("job_stockOffsetSides", f"{stock_offset_sides} cm"),
+            ("job_stockOffsetTop", f"{stock_offset_top} cm"),
+            ("job_stockOffsetBottom", f"{stock_offset_bottom} cm"),
         ]
-        for param_name, expression, reported in wanted:
-            error = self._set_cam_param(
+        for param_name, expression in wanted:
+            error, readback = self._set_cam_param(
                 setup.parameters, param_name, expression=expression
             )
             if error:
                 failed[param_name] = error
             else:
-                applied[param_name] = reported
+                applied[param_name] = readback
 
         return {
             "name": setup.name,
@@ -2650,18 +2660,14 @@ class CommandHandler:
         if name:
             op_input.name = name
 
+        # OperationInput carries no toolDiameter, maximumStepdown or
+        # maximumStepover property. Assigning those names to the SWIG proxy
+        # succeeds silently and reaches nothing, so every cutting value goes
+        # through Operation.parameters after the operation is added instead.
         tool_source = None
         if tool_number is not None:
             op_input.tool = self._find_tool_by_number(cam, tool_number)
             tool_source = f"document tool library, tool number {tool_number}"
-        elif tool_diameter:
-            op_input.toolDiameter = adsk.core.ValueInput.createByReal(tool_diameter)
-            tool_source = f"diameter {tool_diameter} cm"
-
-        if stepdown:
-            op_input.maximumStepdown = adsk.core.ValueInput.createByReal(stepdown)
-        if stepover:
-            op_input.maximumStepover = adsk.core.ValueInput.createByReal(stepover)
 
         op = setup.operations.add(op_input)
 
@@ -2669,23 +2675,28 @@ class CommandHandler:
         failed = {}
 
         wanted = []
+        if tool_number is None and tool_diameter:
+            # A library tool carries its own diameter, so only override the
+            # diameter when no tool was assigned.
+            wanted.append(("tool_diameter", {"expression": f"{tool_diameter} cm"}))
+            tool_source = f"diameter {tool_diameter} cm"
+        if stepdown:
+            wanted.append(("maximumStepdown", {"expression": f"{stepdown} cm"}))
+        if stepover:
+            wanted.append(("stepover", {"expression": f"{stepover} cm"}))
         if feed_rate is not None:
-            wanted.append(
-                ("tool_feedCutting", {"expression": f"{feed_rate} cm/min"}, feed_rate)
-            )
+            wanted.append(("tool_feedCutting", {"expression": f"{feed_rate} cm/min"}))
         if spindle_speed is not None:
-            wanted.append(
-                ("tool_spindleSpeed", {"value": int(spindle_speed)}, int(spindle_speed))
-            )
+            wanted.append(("tool_spindleSpeed", {"value": int(spindle_speed)}))
         if coolant:
-            wanted.append(("tool_coolant", {"expression": f"'{coolant}'"}, coolant))
+            wanted.append(("tool_coolant", {"expression": f"'{coolant}'"}))
 
-        for param_name, how, reported in wanted:
-            error = self._set_cam_param(op.parameters, param_name, **how)
+        for param_name, how in wanted:
+            error, readback = self._set_cam_param(op.parameters, param_name, **how)
             if error:
                 failed[param_name] = error
             else:
-                applied[param_name] = reported
+                applied[param_name] = readback
 
         return {
             "name": op.name,
