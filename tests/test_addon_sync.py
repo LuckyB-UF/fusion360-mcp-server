@@ -16,7 +16,10 @@ from __future__ import annotations
 
 import ast
 import importlib.util
+import os
 from pathlib import Path
+
+import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -85,4 +88,53 @@ def test_mutation_sets_in_sync():
         f"_MUTATION_COMMANDS (addon) and _MUTATION_MOCKS (mock.py) have drifted.\n"
         f"  only in addon: {sorted(addon_set - mock_set)}\n"
         f"  only in mock:  {sorted(mock_set - addon_set)}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Deployment drift: the add-in Fusion actually runs vs. this repo.
+#
+# install-addon.sh intends a symlink, but `ln -s` under Git Bash on Windows
+# silently falls back to a COPY unless developer mode / MSYS winsymlinks is
+# on.  When that happens, editing the repo changes nothing Fusion executes,
+# and a patch looks applied while the old code is still running - which is
+# exactly how a fix for a bridge lockout was reported as live while Fusion
+# kept raising the bug it fixed.
+# ---------------------------------------------------------------------------
+
+
+def _deployed_addon_dir() -> Path | None:
+    appdata = os.environ.get("APPDATA")
+    if not appdata:
+        return None
+    target = (
+        Path(appdata)
+        / "Autodesk"
+        / "Autodesk Fusion 360"
+        / "API"
+        / "AddIns"
+        / "Fusion360MCP"
+        / "server"
+    )
+    return target if target.is_dir() else None
+
+
+@pytest.mark.parametrize("filename", ["command_handler.py", "hints.py", "event_bridge.py"])
+def test_deployed_addon_matches_repo(filename):
+    """The installed add-in must be byte-identical to this repo's addon/server."""
+    deployed = _deployed_addon_dir()
+    if deployed is None:
+        pytest.skip("no Fusion add-in installed on this machine")
+
+    repo_file = REPO_ROOT / "addon" / "server" / filename
+    live_file = deployed / filename
+    if not live_file.exists():
+        pytest.skip(f"{filename} not present in the installed add-in")
+
+    assert live_file.read_text(encoding="utf-8") == repo_file.read_text(
+        encoding="utf-8"
+    ), (
+        f"{filename} differs between this repo and the add-in Fusion runs "
+        f"({live_file}). Copy it across, then reload the add-in in Fusion "
+        f"(Shift+S). Editing the repo alone changes nothing Fusion executes."
     )

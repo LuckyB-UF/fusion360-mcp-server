@@ -15,7 +15,10 @@ log = logging.getLogger("fusion360_mcp.connection")
 _DEFAULT_HOST = "localhost"
 _DEFAULT_PORT = 9876
 _RECV_BUF = 65536
-_TIMEOUT = 30.0  # matches the add-in's bridge timeout
+# Must stay ABOVE the add-in's EventBridge.submit() timeout in
+# addon/server/event_bridge.py (30.0s).  Equal values race, and when the
+# client wins the caller loses the add-in's own timeout message.
+_TIMEOUT = 40.0
 _PING_TIMEOUT = 5.0
 _MAX_RETRIES = 2
 _RETRY_DELAY = 1.0  # seconds between reconnect attempts
@@ -114,13 +117,25 @@ class Fusion360Connection:
         except (socket.timeout, OSError, ConnectionError) as exc:
             log.error("Socket error: %s", exc)
             self.disconnect()
-            if retries > 0:
+            # A timeout does not mean the command failed.  The add-in runs it
+            # on Fusion's main thread and keeps going after we stop waiting,
+            # so resending a mutating command repeats its side effects: one
+            # createDrawing() call that timed out produced three documents.
+            # Only commands declared idempotent are safe to send twice.
+            from .tools import _IDEMPOTENT
+
+            if retries > 0 and command_type in _IDEMPOTENT:
                 log.info("Retrying (%d left)...", retries)
                 time.sleep(_RETRY_DELAY)
                 if self.connect():
                     return self.send_command(command_type, params,
                                             retries=retries - 1)
-            raise ConnectionError(f"Lost connection to Fusion 360: {exc}") from exc
+            raise ConnectionError(
+                f"Lost connection to Fusion 360 during '{command_type}': {exc}. "
+                f"This command is not known-idempotent, so it was not resent. "
+                f"It may have applied fully or partially in Fusion - call "
+                f"get_scene_info to check before repeating it."
+            ) from exc
 
         if response.get("status") == "error":
             raise RuntimeError(response.get("message", "Unknown error"))

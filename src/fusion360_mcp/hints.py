@@ -20,6 +20,18 @@ _RULES: list[tuple[str, str, list[str]]] = [
         ],
     ),
     (
+        r"failed to find product",
+        "NO_DESIGN_PRODUCT",
+        [
+            "The active document has no Design product - usually a Drawing "
+            "(.f2d), or a document open only in Manufacturing or Simulation.",
+            "execute_code still runs without a design: call "
+            "app.documents.item(i).activate() to switch to a model document.",
+            "Every other tool needs a Design product, so switch the active "
+            "document in Fusion before calling one.",
+        ],
+    ),
+    (
         r"no profiles? in sketch",
         "PROFILE_NOT_CLOSED",
         [
