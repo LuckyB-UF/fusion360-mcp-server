@@ -33,7 +33,18 @@ fi
 # Create symlink for development (changes reflect immediately)
 ln -s "$ADDON_SRC" "$TARGET"
 
-echo "  ✓ Installed via symlink"
+# Under Git Bash on Windows, `ln -s` silently falls back to a COPY unless
+# developer mode or MSYS winsymlinks is enabled.  Say so loudly: a copy means
+# editing the repo changes nothing Fusion runs, and a patch can look applied
+# while the old code is still executing.
+if [ -L "$TARGET" ]; then
+    echo "  ✓ Installed via symlink"
+else
+    echo "  ! Installed as a COPY, not a symlink."
+    echo "    ln -s fell back to copying (no developer mode / MSYS winsymlinks)."
+    echo "    Repo edits will NOT reach Fusion until you re-run this script."
+    echo "    tests/test_addon_sync.py::test_deployed_addon_matches_repo catches the drift."
+fi
 echo ""
 echo "Next steps:"
 echo "  1. Open Fusion 360"

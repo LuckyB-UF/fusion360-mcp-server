@@ -2986,17 +2986,29 @@ class CommandHandler:
     # ------------------------------------------------------------------
 
     def execute_code(self, code: str):
-        design = self._design()
-        type_before = design.designType
+        # A Drawing (.f2d) document has no Design product, and _design()
+        # raises rather than returning None.  Every other handler needs a
+        # design to do its job, but execute_code is also the only tool that
+        # can call document.activate() - so requiring one here locked the
+        # bridge until a human clicked a model tab in Fusion.
+        try:
+            design = self._design()
+        except Exception:
+            design = None
+        type_before = design.designType if design is not None else None
 
         ns = {
             "adsk": adsk,
             "app": self.app,
             "ui": self.ui,
-            "design": design,
-            "component": self._root(),
             "math": math,
         }
+        if design is not None:
+            ns["design"] = design
+            try:
+                ns["component"] = self._root()
+            except Exception:
+                pass
 
         buf = io.StringIO()
 
@@ -3027,9 +3039,9 @@ class CommandHandler:
         result = last_expr_value if last_expr_value is not None else output
 
         # Warn if design type changed during execution
-        type_after = design.designType
+        type_after = design.designType if design is not None else None
         design_type_warning = None
-        if type_before != type_after:
+        if design is not None and type_before != type_after:
             design_type_warning = (
                 f"WARNING: Design type changed from "
                 f"{'parametric' if type_before == 1 else 'direct'} to "
