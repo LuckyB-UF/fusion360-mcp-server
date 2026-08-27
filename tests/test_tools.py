@@ -63,6 +63,7 @@ def test_expected_tools_present():
         # scene / query
         "get_scene_info",
         "get_object_info",
+        "get_bounding_box",
         # sketch
         "create_sketch",
         "draw_rectangle",
@@ -102,6 +103,9 @@ def test_expected_tools_present():
         "export_step",
         "export_f3d",
         "export_view_sheet",
+        "export",
+        # import
+        "import_mesh",
         # parameters
         "get_parameters",
         "create_parameter",
@@ -131,6 +135,7 @@ def test_expected_tools_present():
         "create_cylinder",
         "create_sphere",
         "create_torus",
+        "create_box_parametric",
         # assembly (extended)
         "create_as_built_joint",
         "create_rigid_group",
