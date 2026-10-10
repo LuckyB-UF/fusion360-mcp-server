@@ -43,7 +43,16 @@ ECAD_TOOLS: list[dict] = [
             "and make it active. Nothing is saved until you call "
             "ecad_save_design."
         ),
-        "inputSchema": {"type": "object", "properties": {}},
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "with_board": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Also create the PCB now",
+                },
+            },
+        },
     },
     {
         "name": "ecad_open_editor",

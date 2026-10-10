@@ -76,6 +76,25 @@ def _g(obj, *names, default=None):
     return default
 
 
+def _safe(fn, default=None):
+    """Call *fn*; Fusion raises (not returns None) for missing links."""
+    try:
+        return fn()
+    except Exception:
+        return default
+
+
+def _pump(cond, timeout: float = 20.0, step: float = 0.1) -> bool:
+    """Let Fusion process events until cond() is true or timeout."""
+    end = time.monotonic() + timeout
+    while time.monotonic() < end:
+        adsk.doEvents()
+        if _safe(cond, False):
+            return True
+        time.sleep(step)
+    return bool(_safe(cond, False))
+
+
 def _name(obj, default=""):
     return _g(obj, "name", default=default) if obj is not None else default
 
@@ -199,29 +218,40 @@ class EcadHandler:
             if d:
                 return d.ecadDesign
             s = electron.SchematicDocument.cast(doc)
-            if s and s.schematic:
-                return s.schematic.parentDesign
+            design = _safe(lambda: s.schematic.parentDesign) if s else None
+            if design is not None:
+                return design
             b = electron.BoardDocument.cast(doc)
-            if b and b.board:
-                return b.board.parentDesign
+            design = _safe(lambda: b.board.parentDesign) if b else None
+            if design is not None:
+                return design
         raise EcadError(
             "No electronics design is open. Open one, or call ecad_new_design."
         )
 
     def _sch(self):
-        s = self._design().schematic
+        s = _safe(lambda: self._design().schematic)
         if s is None:
-            raise EcadError("This electronics design has no schematic")
+            raise EcadError(
+                "This electronics design has no schematic yet. Call "
+                "ecad_open_editor schematic to create it."
+            )
         return s
 
     def _brd(self):
-        b = self._design().board
+        b = _safe(lambda: self._design().board)
         if b is None:
             raise EcadError(
-                "This electronics design has no PCB yet. Open the PCB editor "
-                "once (ecad_open_editor board) to create it."
+                "This electronics design has no PCB yet. Call "
+                "ecad_open_editor board to create it."
             )
         return b
+
+    def _sch_or_none(self):
+        return _safe(lambda: self._design().schematic)
+
+    def _brd_or_none(self):
+        return _safe(lambda: self._design().board)
 
     def _active_editor(self) -> str | None:
         doc = self.app.activeDocument
@@ -233,20 +263,34 @@ class EcadHandler:
             return "schematic"
         return None
 
+    # Fusion command ids that create the schematic / PCB of a design.
+    _CREATE_CMDS = {
+        "schematic": ("NewElectronSchDocumentCommand",),
+        "board": ("NewElectronBrdDocumentCommand", "NewElectronPcbDocumentCommand",
+                  "NewElectronBoardDocumentCommand"),
+    }
+
     def _activate(self, editor: str):
         if self._active_editor() == editor:
             return
-        design = self._design()
-        target = design.board if editor == "board" else design.schematic
-        doc = target.parentDocument if target is not None else None
-        if doc is not None and doc.activate():
-            adsk.doEvents()
-            return
-        # Fall back to the EAGLE EDIT command, which switches editors.
-        self._exec_text(f'Electron.run "EDIT .{"brd" if editor == "board" else "sch"}"')
-        adsk.doEvents()
-        if self._active_editor() not in (editor, None):
-            raise EcadError(f"Could not switch to the {editor} editor")
+        target = (self._brd_or_none() if editor == "board"
+                  else self._sch_or_none())
+        if target is not None:
+            doc = _safe(lambda: target.parentDocument)
+            if doc is not None and _safe(doc.activate, False):
+                if _pump(lambda: self._active_editor() == editor, 10):
+                    return
+        else:
+            # The editor does not exist yet: create it inside this design.
+            self._design()
+            ui = self.app.userInterface
+            for cid in self._CREATE_CMDS[editor]:
+                cmd = ui.commandDefinitions.itemById(cid)
+                if cmd:
+                    cmd.execute()
+                    if _pump(lambda: self._active_editor() == editor, 30):
+                        return
+        raise EcadError(f"Could not open the {editor} editor")
 
     # ------------------------------------------------------------------
     # running EAGLE commands
@@ -288,10 +332,10 @@ class EcadHandler:
         snap = {"parts": 0, "nets": 0, "elements": 0, "signals": 0,
                 "wires": 0, "vias": 0, "polygons": 0}
         try:
-            design = self._design()
+            self._design()
         except Exception:
             return snap
-        sch, brd = design.schematic, design.board
+        sch, brd = self._sch_or_none(), self._brd_or_none()
         if sch is not None:
             snap["parts"] = len(_items(sch.parts))
             snap["nets"] = len(_items(sch.nets))
@@ -509,21 +553,24 @@ class EcadHandler:
     # design / session tools
     # ------------------------------------------------------------------
 
-    def new_design(self):
+    def new_design(self, with_board: bool = False):
         ui = self.app.userInterface
-        for cid in ("NewElectronDesignCmd", "NewElectronicsDesignCommand",
-                    "NewElectronDesignCommand", "ElectronNewDesignCmd"):
-            cmd = ui.commandDefinitions.itemById(cid)
-            if cmd:
-                cmd.execute()
-                adsk.doEvents()
-                design = self._design()
-                return {"created": True, "design": _name(design),
-                        "command": cid, "editor": self._active_editor()}
-        raise EcadError(
-            "Could not find Fusion's 'new electronics design' command. "
-            "Create one from File > New Electronics Design, then retry."
-        )
+        cmd = ui.commandDefinitions.itemById("NewElectronDesignDocumentCommand")
+        if not cmd:
+            raise EcadError(
+                "Could not find Fusion's 'new electronics design' command. "
+                "Create one from File > New Electronics Design, then retry."
+            )
+        before = self.app.activeDocument
+        cmd.execute()
+        if not _pump(lambda: self.app.activeDocument != before and
+                     electron.EcadDesignDocument.cast(self.app.activeDocument), 20):
+            raise EcadError("Fusion did not open a new electronics design")
+        self._activate("schematic")
+        if with_board:
+            self._activate("board")
+        return {"created": True, "design": _name(self._design()),
+                "editor": self._active_editor()}
 
     def open_editor(self, editor: str, sheet: int | None = None):
         self._activate(editor)
@@ -540,8 +587,9 @@ class EcadHandler:
 
     def get_design(self):
         design = self._design()
-        sch, brd = design.schematic, design.board
-        out = {"design": _name(design), "editor": self._active_editor()}
+        sch, brd = self._sch_or_none(), self._brd_or_none()
+        out = {"design": _name(design), "editor": self._active_editor(),
+               "has_schematic": sch is not None, "has_board": brd is not None}
         if sch is not None:
             out["sheets"] = len(_items(sch.sheets))
             out["parts"] = len(_items(sch.parts))
@@ -706,21 +754,20 @@ class EcadHandler:
 
     def review(self, power_currents: dict | None = None, run_checks: bool = True,
                decoupling_max_mm: float = 3.0):
-        design = self._design()
+        sch, board = self._sch_or_none(), self._brd_or_none()
         errors = []
         if run_checks:
-            if design.schematic is not None:
+            if sch is not None:
                 self.run_erc()
-            if design.board is not None:
+            if board is not None:
                 self.run_drc()
-        if design.schematic is not None:
-            errors += self._read_errors(design.schematic)
-        board = design.board
+        if sch is not None:
+            errors += self._read_errors(sch)
         if board is not None:
             errors += self._read_errors(board)
         return core.review(
-            parts=self._read_parts() if design.schematic is not None else [],
-            nets=self._read_nets() if design.schematic is not None else [],
+            parts=self._read_parts() if sch is not None else [],
+            nets=self._read_nets() if sch is not None else [],
             elements=self._read_elements() if board is not None else [],
             signals=self._read_signals() if board is not None else [],
             outline=self._outline() if board is not None else None,
@@ -1096,10 +1143,8 @@ class EcadHandler:
                 "files": sorted(os.listdir(output_dir)), "fusion_output": out}
 
     def export_eagle(self, kind, path):
-        design = self._design()
-        product = {"sch": design.schematic, "brd": design.board}.get(kind)
-        if kind == "lbr":
-            product = design.schematic
+        product = {"sch": self._sch_or_none(), "brd": self._brd_or_none(),
+                   "lbr": self._sch_or_none()}.get(kind)
         if product is None:
             raise EcadError(f"Nothing to export for {kind}")
         mgr = product.exportManager
