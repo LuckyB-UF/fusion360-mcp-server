@@ -90,6 +90,7 @@ class TestToolAnnotations:
 
     def test_read_only_tools(self):
         from fusion360_mcp.tools import TOOLS
+        from fusion360_mcp.tools_ecad import ECAD_READ_ONLY
 
         read_only_names = {
             "get_scene_info",
@@ -107,7 +108,7 @@ class TestToolAnnotations:
             "cam_get_operation_info",
             "get_design_type",
             "render_view",
-        }
+        } | ECAD_READ_ONLY
         for t in TOOLS:
             ann = t["annotations"]
             if t["name"] in read_only_names:
@@ -119,8 +120,9 @@ class TestToolAnnotations:
 
     def test_destructive_tools(self):
         from fusion360_mcp.tools import TOOLS
+        from fusion360_mcp.tools_ecad import ECAD_DESTRUCTIVE
 
-        destructive = {"delete_all", "delete_parameter"}
+        destructive = {"delete_all", "delete_parameter"} | ECAD_DESTRUCTIVE
         for t in TOOLS:
             ann = t["annotations"]
             if t["name"] in destructive:

@@ -1,6 +1,7 @@
 """Tests for the tool registry."""
 
 from fusion360_mcp.tools import TOOLS, get_tool_by_name, get_tool_list
+from fusion360_mcp.tools_ecad import ECAD_TOOLS
 
 
 def test_all_tools_have_required_keys():
@@ -180,6 +181,7 @@ def test_expected_tools_present():
         # perception
         "render_view",
     }
+    expected |= {t["name"] for t in ECAD_TOOLS}
     missing = expected - names
     assert not missing, f"Missing tools: {missing}"
     extra = names - expected
@@ -269,3 +271,9 @@ def test_get_tool_by_name_edge_cases():
     assert get_tool_by_name("") is None
     assert get_tool_by_name("PING") is None  # case sensitive
     assert get_tool_by_name("ping ") is None  # trailing space
+
+
+def test_ecad_tools_are_prefixed_and_counted():
+    names = [t["name"] for t in ECAD_TOOLS]
+    assert all(n.startswith("ecad_") for n in names)
+    assert len(names) == 37

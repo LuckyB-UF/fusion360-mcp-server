@@ -13,6 +13,7 @@ sentinel in params forces a classified error response for tests.
 from typing import Any
 
 from .hints import classify as _classify
+from .mock_ecad import ECAD_MOCKS
 
 # Mutation commands that get a synthetic deltas payload in mock mode.
 # Keep in sync with CommandHandler._MUTATION_COMMANDS in the addon.
@@ -1168,3 +1169,6 @@ _DISPATCH: dict[str, Any] = {
     # perception
     "render_view": _render_view,
 }
+
+# Electronics (schematic + PCB) mocks live in their own module.
+_DISPATCH.update(ECAD_MOCKS)

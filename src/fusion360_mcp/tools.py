@@ -7,6 +7,13 @@ JSON Schema that the MCP SDK validates before forwarding arguments.
 
 import mcp.types as types
 
+from .tools_ecad import (
+    ECAD_DESTRUCTIVE,
+    ECAD_IDEMPOTENT,
+    ECAD_READ_ONLY,
+    ECAD_TOOLS,
+)
+
 TOOLS: list[dict] = [
     # ── scene / query ────────────────────────────────────────────────
     {
@@ -2345,6 +2352,12 @@ _IDEMPOTENT = {
     "rename_body",
     "render_view",
 }
+
+# Electronics (schematic + PCB) tools live in their own module.
+TOOLS.extend(ECAD_TOOLS)
+_READ_ONLY |= ECAD_READ_ONLY
+_DESTRUCTIVE |= ECAD_DESTRUCTIVE
+_IDEMPOTENT |= ECAD_IDEMPOTENT
 
 for _t in TOOLS:
     _name = _t["name"]
