@@ -22,6 +22,7 @@ import adsk.fusion
 
 from . import get_logger
 from . import hints as _hints
+from .ecad import EcadHandler
 
 log = get_logger("handler")
 
@@ -32,6 +33,7 @@ class CommandHandler:
     def __init__(self):
         self.app = adsk.core.Application.get()
         self.ui = self.app.userInterface
+        self.ecad = EcadHandler(self.app)
 
     # ------------------------------------------------------------------
     # Dispatch
@@ -216,6 +218,8 @@ class CommandHandler:
                 "set_design_type": self.set_design_type,
                 # perception
                 "render_view": self.render_view,
+                # electronics (schematic + PCB): see ecad.py
+                **self.ecad.commands(),
             }
 
         cmd_type = command.get("type")

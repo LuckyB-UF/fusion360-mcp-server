@@ -15,6 +15,33 @@ import re
 # First match wins. Patterns use re.IGNORECASE.
 _RULES: list[tuple[str, str, list[str]]] = [
     (
+        r"no electronics design is open",
+        "NO_ELECTRONICS_DESIGN",
+        [
+            "Open an electronics design in Fusion, or call ecad_new_design.",
+            "ecad_* tools work on the active electronics design only.",
+        ],
+    ),
+    (
+        r"no electronics api|has no pcb yet|has no schematic",
+        "ECAD_UNAVAILABLE",
+        [
+            "Open the PCB editor once with ecad_open_editor board to create it.",
+            "The Electronics API needs Fusion from May 2026 or later.",
+        ],
+    ),
+    (
+        r"did not add a part|has no pin|part \S+ not found|"
+        r"not on the board|ulp not found|nets without schematic wires",
+        "ECAD_NOT_FOUND",
+        [
+            "Check names with ecad_list_parts, ecad_list_elements or "
+            "ecad_search_library before referring to them.",
+            "Pins are PART.PIN using the pin name from ecad_list_parts "
+            "include_pins.",
+        ],
+    ),
+    (
         r"no active design",
         "NO_ACTIVE_DESIGN",
         [
