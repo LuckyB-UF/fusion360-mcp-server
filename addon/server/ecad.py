@@ -262,10 +262,14 @@ class EcadHandler:
         if d is None:
             return None
         doc = self._docs.get("design")
-        if not _safe(lambda: d.isValid, True) or (
-                doc is not None and not _safe(lambda: doc.isValid, False)) or (
-                doc is None and _safe(lambda: d.parentDocument.isValid,
-                                      True) is False):
+        if doc is not None:
+            # An imported design's EcadDesign is half-linked until saved, so
+            # judge it by its document.
+            alive = _safe(lambda: doc.isValid, True) is not False
+        else:
+            alive = _safe(lambda: d.isValid, True) is not False and _safe(
+                lambda: d.parentDocument.isValid, True) is not False
+        if not alive:
             self._unpin()
             return None
         return d
@@ -275,7 +279,7 @@ class EcadHandler:
         if self._pinned_design() is None:
             return None
         doc = self._docs.get(kind)
-        if doc is not None and not _safe(lambda: doc.isValid, False):
+        if doc is not None and _safe(lambda: doc.isValid, True) is False:
             self._docs.pop(kind, None)
             return None
         return doc
