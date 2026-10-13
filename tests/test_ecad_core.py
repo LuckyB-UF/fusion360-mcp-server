@@ -339,3 +339,20 @@ def test_review_clean_design_passes():
                                    {"part": "R1", "pin": "2"}]}]
     r = ec.review(parts, nets)
     assert r["passed"]
+
+
+def test_interactive_risk_blocks_dialog_commands():
+    risky = ["USE", "ADD R-EU_R0603 (0 0)", "ADD", "DRC", "AUTO", "MENU",
+             "EXPORT;", "OPEN"]
+    for line in risky:
+        assert ec.interactive_risk(line), line
+    safe = ["ADD R-EU_R0603@rcl 'R1' R0 (0 0)", "DRC ;", "AUTO ;", "ERC",
+            "USE rcl", "NET 'GND' (0 0) (2.54 0)", "GRID MM", ""]
+    for line in safe:
+        assert ec.interactive_risk(line) is None, line
+
+
+def test_check_script_raises_on_first_risky_line():
+    with pytest.raises(ValueError, match="library"):
+        ec.check_script(["GRID MM", "ADD R-EU_R0603 (0 0)"])
+    ec.check_script(["GRID MM", "WIRE 0.25 (0 0) (1 1)"])

@@ -1039,6 +1039,10 @@ class EcadHandler:
 
     def command(self, commands, editor=None):
         lines = commands.splitlines() if isinstance(commands, str) else list(commands)
+        try:
+            core.check_script(lines)
+        except ValueError as exc:
+            raise EcadError(str(exc)) from exc
         return self._run(lines, editor=editor)
 
     def run_ulp(self, ulp, args=None, editor=None):

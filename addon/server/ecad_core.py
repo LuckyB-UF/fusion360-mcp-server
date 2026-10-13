@@ -161,6 +161,48 @@ def script(lines: list[str], grid_mm: bool = True) -> str:
     return "\n".join(out) + "\n"
 
 
+# Commands that open a modal window in Fusion when given too few arguments.
+# A modal window blocks Fusion's main thread, so the add-in would hang.
+_NEEDS_ARGS = {"USE", "OPEN", "EDIT", "EXPORT", "IMPORT", "SCRIPT", "RUN",
+               "WRITE", "SET", "CAM", "PRINT", "LAYER", "CLASS", "INFO",
+               "DESCRIPTION", "ATTRIBUTE", "REPLACE", "UPDATE", "VALUE", "NAME"}
+_ALWAYS_MODAL = {"MENU", "ASSIGN", "QUIT", "CLOSE", "PRINT", "CAM", "OPTIMIZE"}
+
+
+def interactive_risk(line: str) -> str | None:
+    """Why a command line would open a blocking dialog, or None if it is safe.
+
+    Rules come from live testing: ADD without a library opened a modal window
+    that froze Fusion.  DRC and AUTO open their setup dialogs unless the line
+    ends with ';' straight after the options.
+    """
+    text = line.strip().rstrip(";").strip()
+    if not text:
+        return None
+    words = text.split()
+    cmd = words[0].upper()
+    args = words[1:]
+    if cmd in _ALWAYS_MODAL:
+        return f"{cmd} always opens a window"
+    if cmd in _NEEDS_ARGS and not args:
+        return f"{cmd} with no arguments opens a window"
+    if cmd == "ADD":
+        if not args or "@" not in args[0]:
+            return "ADD needs device@library, or Fusion opens the library browser"
+    if cmd in ("DRC", "AUTO"):
+        if not line.strip().endswith(";"):
+            return f"{cmd} must end with ';' or it opens its setup dialog"
+    return None
+
+
+def check_script(lines: list[str]) -> None:
+    """Raise ValueError if any line would open a blocking dialog."""
+    for line in lines:
+        why = interactive_risk(line)
+        if why:
+            raise ValueError(f"Refused '{line.strip()[:80]}': {why}")
+
+
 # ---------------------------------------------------------------- schematic
 
 
