@@ -13,12 +13,32 @@ import traceback
 
 import adsk.core
 
-from . import get_logger
+from . import dialog_guard, get_logger
 
 log = get_logger("bridge")
 
 CUSTOM_EVENT_ID = "Fusion360MCP_BridgeEvent"
 TIMER_INTERVAL_MS = 200  # backup polling interval
+DEFAULT_TIMEOUT = 30.0
+
+# Commands that legitimately run longer than DEFAULT_TIMEOUT.  The MCP
+# client's own limits (src/fusion360_mcp/connection.py) must stay above
+# these; tests/test_ecad_wiring.py checks that.
+LONG_COMMANDS = {
+    "ecad_build_design": 150.0,   # importSchAndBrd: 10-23 s measured
+    "ecad_new_design": 60.0,
+    "ecad_open_editor": 60.0,
+    "ecad_export_gerbers": 120.0,
+    "ecad_export_odb": 120.0,
+}
+
+# A modal dialog freezes the main thread.  For electronics commands, look
+# for one after this many seconds, and close any that appeared.
+DIALOG_CHECK_AFTER = 4.0
+
+
+def timeout_for(cmd_type: str) -> float:
+    return LONG_COMMANDS.get(cmd_type, DEFAULT_TIMEOUT)
 
 
 class WorkItem:
@@ -74,14 +94,25 @@ class EventBridge:
     # Called from socket (daemon) threads
     # ------------------------------------------------------------------
 
-    def submit(self, command: dict, timeout: float = 30.0) -> dict:
+    def submit(self, command: dict, timeout: float | None = None) -> dict:
         """Queue *command* for main-thread execution; block until done."""
         cmd_type = command.get("type", "?")
+        if timeout is None:
+            timeout = timeout_for(cmd_type)
 
         # Fast-path: ping never touches Fusion API — answer immediately
         if cmd_type == "ping":
             log.debug("ping (fast path)")
             return {"status": "success", "result": {"pong": True}}
+
+        guarded = cmd_type.startswith("ecad_")
+        before = set()
+        if guarded:
+            try:
+                before = dialog_guard.snapshot()
+            except Exception as exc:
+                log.debug("dialog snapshot failed: %s", exc)
+                guarded = False
 
         log.debug("submit cmd=%s", cmd_type)
         item = WorkItem(command)
@@ -93,17 +124,42 @@ class EventBridge:
         except Exception:
             pass  # timer will pick it up
 
-        if not item.done.wait(timeout=timeout):
+        closed = []
+        start = time.monotonic()
+        while not item.done.wait(timeout=1.0):
+            elapsed = time.monotonic() - start
+            if guarded and elapsed >= DIALOG_CHECK_AFTER:
+                try:
+                    closed += dialog_guard.dismiss_dialogs(exclude=before)
+                except Exception as exc:
+                    log.error("dialog dismiss failed: %s", exc)
+            if elapsed >= timeout:
+                break
+
+        if not item.done.is_set():
             log.warning("Command %s timed out after %ss", cmd_type, timeout)
-            return {"status": "error",
-                    "message": f"Command timed out after {timeout}s"}
+            msg = f"Command timed out after {timeout}s"
+            if closed:
+                msg += (". Fusion opened a dialog that was closed: "
+                        + "; ".join(f"{d['title'] or d['class']}" for d in closed))
+            return {"status": "error", "message": msg}
 
         if item.error is not None:
             log.error("Command %s failed: %s", cmd_type, item.error)
-            return {"status": "error", "message": item.error}
+            msg = item.error
+            if closed:
+                msg = ("Fusion opened a dialog during this command and it was "
+                       "closed without applying: " + "; ".join(
+                           d["title"] or d["class"] for d in closed)
+                       + ".\n" + msg)
+            return {"status": "error", "message": msg}
 
         log.debug("Command %s completed", cmd_type)
-        return item.result
+        result = item.result
+        if closed and isinstance(result, dict) and isinstance(
+                result.get("result"), dict):
+            result["result"]["dialogs_closed"] = closed
+        return result
 
     # ------------------------------------------------------------------
     # Called on Fusion's main thread (from CustomEventHandler.notify)

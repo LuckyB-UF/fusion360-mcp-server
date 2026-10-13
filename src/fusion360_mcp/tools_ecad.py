@@ -6,6 +6,11 @@ official API) and changes them by running EAGLE command scripts through
 Fusion's ``Electron.runScript`` text command.  Every changing tool reads
 the design back afterwards and reports what actually changed.
 
+New circuits go in through ``ecad_build_design``: EAGLE's ADD does not work
+from code in Fusion, so the add-in writes the whole design as EAGLE XML and
+imports it.  Edit the spec and build again to change the circuit; then lay
+out and finish the board with the editing tools.
+
 All lengths are millimetres.  Coordinates are sheet or board coordinates.
 """
 
@@ -177,22 +182,127 @@ ECAD_TOOLS: list[dict] = [
     },
     {
         "name": "ecad_search_library",
-        "title": "Search Libraries",
+        "title": "Search Part Libraries",
         "description": (
-            "Find devices in the libraries used by the design and in any "
-            "library files given. Returns device set, device (package "
-            "variant) and technologies, ready for ecad_add_part."
+            "Find devices for ecad_build_design in classic EAGLE libraries: "
+            "the ones bundled with Fusion (rcl, supply1, pinhead, diode, led, "
+            "linear, ...) or .lbr/.sch files you name. Returns library, "
+            "device full name, package, gates and pin names."
         ),
         "inputSchema": {
             "type": "object",
-            "required": ["query"],
             "properties": {
                 "query": {
                     "type": "string",
                     "description": "Regex on device name, package or description",
                 },
                 "library": {"type": "string", "description": "Limit to one library"},
+                "library_files": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": (
+                        "Classic EAGLE .lbr, .sch or .brd files on the Fusion PC "
+                        "(their libraries replace the bundled ones)"
+                    ),
+                },
                 "limit": {"type": "integer", "default": 40, "minimum": 1},
+            },
+        },
+    },
+    {
+        "name": "ecad_build_design",
+        "title": "Build Electronics Design",
+        "description": (
+            "Create a new electronics design (schematic + PCB) from a full "
+            "spec: parts from classic EAGLE libraries, nets, board outline, "
+            "net classes, and optional board positions. The way to put a "
+            "circuit into Fusion; to change the circuit, edit the spec and "
+            "build again. Each net pin gets a short labelled stub on the "
+            "schematic; parts without a position are laid out automatically. "
+            "Reads the result back and reports anything missing. Takes "
+            "10-30 s."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "required": ["parts", "outline"],
+            "properties": {
+                "name": {"type": "string", "description": "Design file name"},
+                "parts": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "required": ["name", "library", "device"],
+                        "properties": {
+                            "name": {"type": "string", "description": "R1, U2, ..."},
+                            "library": {"type": "string", "description": "e.g. rcl"},
+                            "device": {
+                                "type": "string",
+                                "description": (
+                                    "Full device name (R-EU_R0603), or the "
+                                    "package variant when deviceset is given"
+                                ),
+                            },
+                            "deviceset": {"type": "string"},
+                            "technology": {"type": "string"},
+                            "value": {"type": "string"},
+                            "attributes": {
+                                "type": "object",
+                                "additionalProperties": {"type": "string"},
+                                "description": "MPN, MANUFACTURER, ...",
+                            },
+                            "sch": {**_POINTS["items"],
+                                    "description": "Schematic [x, y] mm"},
+                            "angle": {"type": "number",
+                                      "description": "Schematic angle, 90° steps"},
+                            "board": {**_POINTS["items"],
+                                      "description": "Board [x, y] mm"},
+                            "board_angle": {"type": "number"},
+                            "side": {"type": "string", "enum": ["top", "bottom"]},
+                        },
+                    },
+                },
+                "nets": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "required": ["name", "pins"],
+                        "properties": {
+                            "name": {"type": "string"},
+                            "pins": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": "PART.PIN, or PART.GATE.PIN",
+                            },
+                            "class": {"type": "integer", "minimum": 0},
+                        },
+                    },
+                },
+                "outline": {
+                    "type": "object",
+                    "description": (
+                        "{width, height, origin?, corner_radius?} or "
+                        "{points: [[x, y], ...]}"
+                    ),
+                },
+                "classes": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "required": ["number", "name"],
+                        "properties": {
+                            "number": {"type": "integer", "minimum": 0},
+                            "name": {"type": "string"},
+                            "width": {"type": "number"},
+                            "clearance": {"type": "number"},
+                            "drill": {"type": "number"},
+                        },
+                    },
+                },
+                "library_files": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Classic EAGLE library files (default: bundled)",
+                },
             },
         },
     },
@@ -294,28 +404,23 @@ ECAD_TOOLS: list[dict] = [
     },
     {
         "name": "ecad_add_part",
-        "title": "Add Part",
+        "title": "Copy a Part",
         "description": (
-            "Add a device to the schematic (and so to the board). Use "
-            "ecad_search_library to find device and library names. Sets value "
-            "and attributes (MPN, MANUFACTURER, ...) in the same step."
+            "Add a part to the schematic (and board) by copying a part "
+            "already in the design with the same device, e.g. one more 100n "
+            "capacitor. For a device the design does not use yet, add it to "
+            "the spec and run ecad_build_design."
         ),
         "inputSchema": {
             "type": "object",
-            "required": ["device", "library", "x", "y"],
+            "required": ["name", "like", "x", "y"],
             "properties": {
-                "device": {
-                    "type": "string",
-                    "description": "Device set + package variant, e.g. R-EU_R0603",
-                },
-                "library": {"type": "string", "description": "Library name, e.g. rcl"},
-                "name": {"type": "string", "description": "Reference, e.g. R12"},
+                "name": {"type": "string", "description": "New reference, e.g. C12"},
+                "like": {"type": "string", "description": "Existing part to copy"},
                 "value": {"type": "string"},
                 "x": _XY,
                 "y": _XY,
-                "angle": {"type": "number", "default": 0},
-                "mirror": {"type": "boolean", "default": False},
-                "sheet": {"type": "integer", "minimum": 1},
+                "sheet": {"type": "integer", "minimum": 1, "default": 1},
                 "gate": {"type": "string"},
                 "attributes": {
                     "type": "object",
@@ -680,7 +785,9 @@ ECAD_TOOLS: list[dict] = [
         "description": (
             "Run a CAM job to make Gerber, NC drill and assembly files into "
             "a folder (Fusion's Electron.mfgexport). Uses Fusion's bundled "
-            "2- or 4-layer job when cam_job is not given."
+            "2- or 4-layer job when cam_job is not given. Fusion exports the "
+            "last saved version, so an unsaved design is refused unless "
+            "save_first is true."
         ),
         "inputSchema": {
             "type": "object",
@@ -689,6 +796,7 @@ ECAD_TOOLS: list[dict] = [
                 "output_dir": _PATH,
                 "cam_job": {"type": "string", "description": "Path to a .cam job"},
                 "zip": {"type": "boolean", "default": True},
+                "save_first": {"type": "boolean", "default": False},
             },
         },
     },
@@ -702,6 +810,7 @@ ECAD_TOOLS: list[dict] = [
             "properties": {
                 "output_dir": _PATH,
                 "cam_job": {"type": "string"},
+                "save_first": {"type": "boolean", "default": False},
             },
         },
     },

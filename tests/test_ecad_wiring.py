@@ -76,3 +76,20 @@ def test_ecad_errors_are_classified():
     assert classify("This electronics design has no PCB yet.")[0] == (
         "ECAD_UNAVAILABLE")
     assert classify("U1 has no pin VDD. Pins: 1, 2")[0] == "ECAD_NOT_FOUND"
+
+
+def _addon_long_commands() -> dict[str, float]:
+    path = _ECAD.parent / "event_bridge.py"
+    for node in ast.walk(ast.parse(path.read_text())):
+        if isinstance(node, ast.Assign) and getattr(
+                node.targets[0], "id", "") == "LONG_COMMANDS":
+            return ast.literal_eval(node.value)
+    raise AssertionError("LONG_COMMANDS not found")
+
+
+def test_client_waits_longer_than_addon():
+    from fusion360_mcp.connection import _TIMEOUT, timeout_for
+
+    assert _TIMEOUT > 30.0
+    for cmd, addon_limit in _addon_long_commands().items():
+        assert timeout_for(cmd) > addon_limit + 5, cmd

@@ -102,13 +102,10 @@ class TestTimeoutsAreNotTied:
 
         server_timeout = None
         for node in ast.walk(tree):
-            if isinstance(node, ast.FunctionDef) and node.name == "submit":
-                for default in node.args.defaults:
-                    if isinstance(default, ast.Constant) and isinstance(
-                        default.value, float
-                    ):
-                        server_timeout = default.value
-        assert server_timeout is not None, "could not read EventBridge.submit timeout"
+            if (isinstance(node, ast.Assign)
+                    and getattr(node.targets[0], "id", "") == "DEFAULT_TIMEOUT"):
+                server_timeout = node.value.value
+        assert server_timeout is not None, "could not read EventBridge DEFAULT_TIMEOUT"
 
         assert connection._TIMEOUT > server_timeout, (
             f"client timeout {connection._TIMEOUT}s must exceed the add-in's "

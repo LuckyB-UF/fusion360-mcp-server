@@ -97,10 +97,13 @@ def _list_signals(_p: dict) -> dict:
 
 
 def _search_library(p: dict) -> dict:
-    return _ok(query=p.get("query"), count=1, results=[
-        {"library": "rcl", "deviceset": "R-EU_", "device": "R-EU_R0603",
-         "package": "R0603", "technologies": [""],
-         "description": "RESISTOR, European symbol"}])
+    return _ok(query=p.get("query"), count=1, libraries=["rcl", "supply1"],
+               truncated=False, results=[
+                   {"library": "rcl", "deviceset": "R-EU_", "device": "R0603",
+                    "full_name": "R-EU_R0603", "package": "R0603",
+                    "gates": ["G$1"], "pins": ["1", "2"], "technologies": [""],
+                    "description": "RESISTOR, European symbol",
+                    "managed": False}])
 
 
 def _render(p: dict) -> dict:
@@ -141,8 +144,19 @@ def _edit(**changes):
 
 
 def _add_part(p: dict) -> dict:
-    return _ok(added=p.get("name") or "R2", device=p.get("device"),
-               changes=_changes(parts=1, elements=1))
+    return _ok(added=p.get("name") or "C2", copied_from=p.get("like") or "C1",
+               device="C-EU_C0603", changes=_changes(parts=1, elements=1))
+
+
+def _build_design(p: dict) -> dict:
+    parts = p.get("parts") or []
+    return _ok(ok=True, design=p.get("name") or "mcp_design", seconds=14.2,
+               parts=len(parts), elements=len(parts),
+               nets=len(p.get("nets") or []), libraries=["rcl"],
+               placed=[{"name": x.get("name"), "x": 5.0, "y": 5.0, "angle": 0,
+                        "side": "top"} for x in parts],
+               files={"sch": "C:/Temp/mcp_design.sch",
+                      "brd": "C:/Temp/mcp_design.brd"})
 
 
 def _connect(p: dict) -> dict:
@@ -214,6 +228,7 @@ ECAD_MOCKS: dict[str, Any] = {
     "ecad_review": _review,
     "ecad_add_sheet": lambda p: _ok(sheet=2, description=p.get("description")),
     "ecad_add_part": _add_part,
+    "ecad_build_design": _build_design,
     "ecad_set_part": lambda p: _ok(name=p.get("name"), changes=_changes()),
     "ecad_connect": _connect,
     "ecad_set_outline": _edit(wires=4),

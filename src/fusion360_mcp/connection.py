@@ -23,6 +23,19 @@ _RECV_BUF = 65536
 # addon/server/event_bridge.py (30.0s).  Equal values race, and when the
 # client wins the caller loses the add-in's own timeout message.
 _TIMEOUT = 40.0
+# Same rule for the commands the add-in lets run longer (LONG_COMMANDS in
+# addon/server/event_bridge.py): ours must be the bigger number.
+_LONG_TIMEOUTS = {
+    "ecad_build_design": 165.0,
+    "ecad_new_design": 75.0,
+    "ecad_open_editor": 75.0,
+    "ecad_export_gerbers": 135.0,
+    "ecad_export_odb": 135.0,
+}
+
+
+def timeout_for(command_type: str) -> float:
+    return _LONG_TIMEOUTS.get(command_type, _TIMEOUT)
 _PING_TIMEOUT = 5.0
 _MAX_RETRIES = 2
 _RETRY_DELAY = 1.0  # seconds between reconnect attempts
@@ -116,7 +129,7 @@ class Fusion360Connection:
 
         try:
             self._sock.sendall(payload.encode("utf-8"))
-            self._sock.settimeout(_TIMEOUT)
+            self._sock.settimeout(timeout_for(command_type))
             response = self._recv_json()
         except (socket.timeout, OSError, ConnectionError) as exc:
             log.error("Socket error: %s", exc)

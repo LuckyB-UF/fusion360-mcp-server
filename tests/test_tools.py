@@ -276,4 +276,4 @@ def test_get_tool_by_name_edge_cases():
 def test_ecad_tools_are_prefixed_and_counted():
     names = [t["name"] for t in ECAD_TOOLS]
     assert all(n.startswith("ecad_") for n in names)
-    assert len(names) == 37
+    assert len(names) == 38

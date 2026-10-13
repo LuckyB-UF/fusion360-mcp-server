@@ -26,7 +26,7 @@ import time
 import adsk.core
 
 from . import ecad_core as core
-from . import get_logger
+from . import ecad_xml, get_logger
 
 try:  # Electronics API ships with Fusion since May 2026
     import adsk.electron as electron
@@ -35,8 +35,9 @@ except Exception:  # pragma: no cover - older Fusion
 
 log = get_logger("ecad")
 
-# EAGLE internal resolution: 1/320000 inch.
-_U2MM = 25.4 / 320000.0
+# Internal units of adsk.electron: 320000 per mm (adsk.electron.Units.u2mm,
+# confirmed live on Fusion 2705.1.30).
+_U2MM = 1.0 / 320000.0
 
 
 class EcadError(RuntimeError):
@@ -122,15 +123,34 @@ def _attrs(obj) -> dict:
     return out
 
 
+def _running_install() -> str | None:
+    """Install folder of the Fusion that is running this add-in.
+
+    Several versions can sit side by side under webdeploy/production, and
+    the newest folder is not always the one running.
+    """
+    here = os.path.dirname(os.path.abspath(os.__file__))
+    for _ in range(6):
+        if os.path.isdir(os.path.join(here, "Applications", "Electron")):
+            return here
+        here = os.path.dirname(here)
+    return None
+
+
 def _bundle_dirs() -> list[str]:
     """Folders holding Fusion's bundled EAGLE examples (ulp, cam, dru)."""
     roots = []
+    inst = _running_install()
+    if inst:
+        p = os.path.join(inst, "Applications", "Electron", "LibEagle", "examples")
+        if os.path.isdir(p):
+            roots.append(p)
     base = os.path.join(os.environ.get("LOCALAPPDATA", ""), "Autodesk",
                         "webdeploy", "production")
     for d in sorted(glob.glob(os.path.join(base, "*")), key=os.path.getmtime,
                     reverse=True):
         p = os.path.join(d, "Applications", "Electron", "LibEagle", "examples")
-        if os.path.isdir(p):
+        if os.path.isdir(p) and p not in roots:
             roots.append(p)
     return roots
 
@@ -154,6 +174,10 @@ def _find_bundled(filename: str, kind: str) -> str | None:
 class EcadHandler:
     def __init__(self, app):
         self.app = app
+        # The design the tools work on.  Pinned when a tool creates or
+        # imports one, because Fusion's active document can jump to another
+        # open schematic between commands (seen in live testing).
+        self._pinned = None
 
     def commands(self) -> dict:
         return {
@@ -166,6 +190,7 @@ class EcadHandler:
             "ecad_list_elements": self.list_elements,
             "ecad_list_signals": self.list_signals,
             "ecad_search_library": self.search_library,
+            "ecad_build_design": self.build_design,
             "ecad_render": self.render,
             "ecad_run_erc": self.run_erc,
             "ecad_run_drc": self.run_drc,
@@ -207,9 +232,25 @@ class EcadHandler:
                 "Update Fusion to May 2026 or later."
             )
 
+    def _pin(self, design):
+        self._pinned = design
+
+    def _pinned_design(self):
+        d = self._pinned
+        if d is None:
+            return None
+        if not _safe(lambda: d.isValid, True) or _safe(
+                lambda: d.parentDocument.isValid, True) is False:
+            self._pinned = None
+            return None
+        return d
+
     def _design(self):
-        """The active EcadDesign (schematic + board container)."""
+        """The EcadDesign the tools work on (pinned, else the active one)."""
         self._require_api()
+        pinned = self._pinned_design()
+        if pinned is not None:
+            return pinned
         docs = [self.app.activeDocument] + _items(self.app.documents)
         for doc in docs:
             if doc is None:
@@ -266,31 +307,63 @@ class EcadHandler:
     # Fusion command ids that create the schematic / PCB of a design.
     _CREATE_CMDS = {
         "schematic": ("NewElectronSchDocumentCommand",),
-        "board": ("NewElectronBrdDocumentCommand", "NewElectronPcbDocumentCommand",
-                  "NewElectronBoardDocumentCommand"),
+        "board": ("NewElectronPcbDocumentCommand",),
     }
 
-    def _activate(self, editor: str):
-        if self._active_editor() == editor:
-            return
+    def _editor_doc(self, editor: str):
         target = (self._brd_or_none() if editor == "board"
                   else self._sch_or_none())
-        if target is not None:
-            doc = _safe(lambda: target.parentDocument)
-            if doc is not None and _safe(doc.activate, False):
-                if _pump(lambda: self._active_editor() == editor, 10):
-                    return
-        else:
-            # The editor does not exist yet: create it inside this design.
-            self._design()
-            ui = self.app.userInterface
-            for cid in self._CREATE_CMDS[editor]:
-                cmd = ui.commandDefinitions.itemById(cid)
-                if cmd:
-                    cmd.execute()
-                    if _pump(lambda: self._active_editor() == editor, 30):
+        return _safe(lambda: target.parentDocument) if target is not None else None
+
+    def _is_active(self, doc) -> bool:
+        act = self.app.activeDocument
+        if act is None or doc is None:
+            return False
+        try:
+            return act == doc or (act.name == doc.name and act.isActive)
+        except Exception:
+            return False
+
+    def _activate(self, editor: str):
+        """Make *editor* of the working design the active document.
+
+        Checked by document, not by editor type: with several designs open,
+        "a schematic is active" is not the same as "ours is".
+        """
+        doc = self._editor_doc(editor)
+        if doc is not None:
+            if self._is_active(doc):
+                return
+            if _safe(doc.activate, False) and _pump(
+                    lambda: self._is_active(doc), 10):
+                return
+            raise EcadError(f"Could not switch to the {editor} editor")
+        # The editor does not exist yet: create it inside this design.
+        design = self._design()
+        self._pin(design)
+        design_doc = _safe(lambda: design.parentDocument)
+        if design_doc is not None and not self._is_active(design_doc):
+            _safe(design_doc.activate)
+            _pump(lambda: self._is_active(design_doc), 10)
+        ui = self.app.userInterface
+        for cid in self._CREATE_CMDS[editor]:
+            cmd = ui.commandDefinitions.itemById(cid)
+            if cmd:
+                cmd.execute()
+                if _pump(lambda: self._editor_doc(editor) is not None, 30):
+                    new_doc = self._editor_doc(editor)
+                    if self._is_active(new_doc) or (
+                            _safe(new_doc.activate, False) and
+                            _pump(lambda: self._is_active(new_doc), 10)):
                         return
-        raise EcadError(f"Could not open the {editor} editor")
+        raise EcadError(f"Could not create the {editor} editor")
+
+    def _stop_command(self):
+        """End a command mode MOVE/ROTATE/WIRE/VIA leave running."""
+        cmd = _safe(lambda: self.app.userInterface.commandDefinitions.itemById(
+            "Electron::StopCommand"))
+        if cmd is not None:
+            _safe(cmd.execute)
 
     # ------------------------------------------------------------------
     # running EAGLE commands
@@ -316,8 +389,11 @@ class EcadHandler:
         try:
             with os.fdopen(fd, "w", encoding="utf-8") as f:
                 f.write(text)
-            out = self._exec_text(f'Electron.runScript "{path}"')
+            p = path.replace("\\", "/")
+            out = self._exec_text("Electron.runScript " +
+                                  (f'"{p}"' if " " in p else p))
             adsk.doEvents()
+            self._stop_command()
         finally:
             try:
                 os.remove(path)
@@ -566,6 +642,7 @@ class EcadHandler:
         if not _pump(lambda: self.app.activeDocument != before and
                      electron.EcadDesignDocument.cast(self.app.activeDocument), 20):
             raise EcadError("Fusion did not open a new electronics design")
+        self._pin(electron.EcadDesignDocument.cast(self.app.activeDocument).ecadDesign)
         self._activate("schematic")
         if with_board:
             self._activate("board")
@@ -662,38 +739,112 @@ class EcadHandler:
         return {"count": len(sigs), "unrouted_total": sum(s["unrouted"] for s in sigs),
                 "signals": sigs}
 
-    def search_library(self, query: str, library: str | None = None,
-                       limit: int = 40):
-        rx = re.compile(query, re.IGNORECASE)
-        results = []
-        for lib in _items(self._sch().libraries):
-            lname = _name(lib)
-            if library and lname.lower() != library.lower():
-                continue
-            for ds in _items(_g(lib, "devicesets")):
-                desc = _g(ds, "description", "headline", default="") or ""
-                for dev in _items(_g(ds, "devices")):
-                    pkg = _name(_g(dev, "package"))
-                    hay = " ".join([_name(ds), _name(dev), pkg, desc])
-                    if not rx.search(hay):
-                        continue
-                    results.append({
-                        "library": lname,
-                        "deviceset": _name(ds),
-                        "device": _name(ds) + _name(dev),
-                        "package": pkg,
-                        "technologies": [_name(t) for t in
-                                         _items(_g(dev, "technologies"))],
-                        "description": re.sub(r"<[^>]+>", "", desc)[:200],
-                    })
-                    if len(results) >= limit:
-                        return {"query": query, "count": len(results),
-                                "results": results, "truncated": True}
+    # Classic EAGLE libraries bundled with Fusion live inside this example
+    # schematic (rcl, supply1, pinhead, diode, led, linear, ...).  Fusion's
+    # own .lbr files are the managed kind the importer can't use.
+    _BUNDLED_CLASSIC = ("Arduino_MEGA2560_ref.sch",)
+
+    def _library_files(self, files=None) -> list[str]:
+        out = []
+        for f in files or []:
+            if not os.path.isfile(f):
+                raise EcadError(f"Library file not found: {f}")
+            out.append(f)
+        if not files:
+            for name in self._BUNDLED_CLASSIC:
+                p = _find_bundled(name, "")
+                if p:
+                    out.append(p)
+        return out
+
+    def _load_libraries(self, files=None):
+        libs, layers = {}, None
+        for path in self._library_files(files):
+            with open(path, encoding="utf-8") as f:
+                text = f.read()
+            try:
+                found = ecad_xml.libraries_from_xml(text, path)
+            except Exception as exc:
+                raise EcadError(f"Cannot read {path}: {exc}") from exc
+            for k, v in found.items():
+                libs.setdefault(k, v)
+            if layers is None:
+                layers = ecad_xml.layers_from_xml(text)
+        return libs, layers
+
+    def search_library(self, query: str = "", library: str | None = None,
+                       library_files=None, limit: int = 40):
+        """Devices in classic EAGLE libraries (bundled, or files you give)."""
+        libs, _ = self._load_libraries(library_files)
+        if library:
+            libs = {k: v for k, v in libs.items() if k.lower() == library.lower()}
+        results = ecad_xml.list_devices(libs, query, limit)
         return {"query": query, "count": len(results), "results": results,
-                "note": None if results else (
-                    "Only libraries already used by this design are searched. "
-                    "Add a part from the library first with ecad_command "
-                    "'USE <library>' or use a known device name.")}
+                "libraries": sorted(libs),
+                "truncated": len(results) >= limit}
+
+    def build_design(self, parts, outline, nets=None, classes=None,
+                     library_files=None, name="mcp_design"):
+        """Create a new design from a full spec through an EAGLE XML import."""
+        libs, layers = self._load_libraries(library_files)
+        spec = {"parts": parts, "nets": nets or [], "outline": outline,
+                "classes": classes or []}
+        try:
+            built = ecad_xml.build(spec, libs, layers)
+        except ecad_xml.SpecError as exc:
+            raise EcadError(str(exc)) from exc
+        safe = re.sub(r"[^A-Za-z0-9_-]+", "_", name or "mcp_design")[:40]
+        folder = tempfile.mkdtemp(prefix="mcp_ecad_build_")
+        sch = os.path.join(folder, safe + ".sch").replace("\\", "/")
+        brd = os.path.join(folder, safe + ".brd").replace("\\", "/")
+        with open(sch, "w", encoding="utf-8") as f:
+            f.write(built["sch"])
+        with open(brd, "w", encoding="utf-8") as f:
+            f.write(built["brd"])
+        before = {d.name for d in _items(self.app.documents)}
+        t0 = time.monotonic()
+        out = self._exec_text(f'Electron.importSchAndBrd "{sch}" "{brd}"')
+
+        def new_design():
+            for d in _items(self.app.documents):
+                if d.name in before:
+                    continue
+                e = electron.EcadDesignDocument.cast(d)
+                if e:
+                    return e.ecadDesign
+            return None
+
+        if not _pump(lambda: new_design() is not None and _safe(
+                lambda: new_design().board) is not None, 60):
+            raise EcadError(f"The import did not open a new design. Fusion "
+                            f"said: {out!r}")
+        self._pin(new_design())
+        self._stop_command()
+        got_parts = {p["name"] for p in self._read_parts()}
+        got_elements = {e["name"] for e in self._read_elements()}
+        got_nets = {n["name"]: {f"{c['part']}.{c['pin']}" for c in n["pins"]}
+                    for n in self._read_nets()}
+        want_parts = {p["name"] for p in built["parts"]}
+        want_elements = {p["name"] for p in built["placed"]}
+        missing_pins = {}
+        for n in built["nets"]:
+            have = got_nets.get(n["name"], set())
+            gone = [p for p in n["pins"] if p.split(".")[0] + "." +
+                    p.split(".")[-1] not in have]
+            if gone:
+                missing_pins[n["name"]] = gone
+        problems = {
+            "missing_parts": sorted(want_parts - got_parts),
+            "missing_elements": sorted(want_elements - got_elements),
+            "missing_net_pins": missing_pins,
+        }
+        ok = not any(problems.values())
+        return {"ok": ok, "design": _name(self._design()),
+                "seconds": round(time.monotonic() - t0, 1),
+                "parts": len(got_parts), "elements": len(got_elements),
+                "nets": len(got_nets), "libraries": built["libraries"],
+                "placed": built["placed"], "files": {"sch": sch, "brd": brd},
+                **({} if ok else {"problems": problems})}
 
     def render(self, editor: str = "board", sheet: int | None = None,
                preset: str = "all", layers=None, dpi: int = 300,
@@ -793,27 +944,46 @@ class EcadHandler:
                 pass
         return {"sheet": n, **r}
 
-    def add_part(self, device, library, x, y, name=None, value=None, angle=0.0,
-                 mirror=False, sheet=None, gate=None, attributes=None):
-        lines = []
-        if sheet:
-            lines.append(core.cmd_edit_sheet(sheet))
-        lines.append(core.cmd_add(device, library, name, x, y, angle, mirror, gate))
-        r = self._run(lines, editor="schematic")
-        if r["changes"].get("parts", 0) < 1 and not gate:
+    def add_part(self, name, like, x, y, value=None, sheet=1, gate=None,
+                 attributes=None):
+        """Add a part by copying one already in the design.
+
+        EAGLE's ADD does not work from code in Fusion, so a new part is a
+        copy of an existing part with the same device
+        (``Electron.sch_sheet_placeinstance``).  Parts from a library the
+        design does not use yet go in through ecad_build_design.
+        """
+        parts = {p["name"]: p for p in self._read_parts()}
+        if like not in parts:
             raise EcadError(
-                f"ADD {device}@{library} did not add a part. Check the device "
-                "name (device set + package variant) with ecad_search_library."
-            )
-        added = name or self._newest_part_name()
-        follow = []
-        if value:
-            follow.append(core.cmd_value(added, value))
+                f"Part {like} is not in the design. Copy an existing part with "
+                "the same device, or build the design with ecad_build_design.")
+        if name in parts:
+            raise EcadError(f"A part named {name} already exists")
+        g = gate or (parts[like]["gates"][0]["gate"] if parts[like]["gates"]
+                     else "G$1")
+        self._activate("schematic")
+        before = self._snapshot()
+        out = self._exec_text(
+            f"Electron.sch_sheet_placeinstance {int(sheet)} {like} {name} {g} "
+            f"mm {core.fmt(x)} {core.fmt(y)}")
+        adsk.doEvents()
+        self._stop_command()
+        after = {p["name"] for p in self._read_parts()}
+        if name not in after:
+            raise EcadError(f"Fusion did not add {name}. It said: {out!r}")
+        follow = [core.cmd_value(name, value or parts[like]["value"])] \
+            if (value or parts[like]["value"]) else []
         for k, v in (attributes or {}).items():
-            follow.append(core.cmd_attribute(added, k, v))
+            follow.append(core.cmd_attribute(name, k, v))
         if follow:
             self._run(follow, editor="schematic", grid_mm=False)
-        return {"added": added, "device": device, "library": library, **r}
+        snap = self._snapshot()
+        return {"added": name, "copied_from": like,
+                "device": parts[like]["device"],
+                "changes": {k: snap.get(k, 0) - before.get(k, 0) for k in snap},
+                "note": ("Copies made this way may refuse ROTATE on the board; "
+                         "rebuild with ecad_build_design if that matters.")}
 
     def _newest_part_name(self) -> str:
         parts = _items(self._sch().parts)
@@ -844,6 +1014,8 @@ class EcadHandler:
         by_part = {}
         for p in _items(self._sch().parts):
             by_part[_name(p)] = p
+        owner = {(c["part"], c["pin"]): n["name"] for n in self._read_nets()
+                 for c in n["pins"]}
         lines = []
         done = []
         sheet_now = None
@@ -856,13 +1028,24 @@ class EcadHandler:
                 names = sorted({x["pin"] for x in self._part_pins(p)})
                 raise EcadError(f"{part} has no pin {pin}. Pins: {', '.join(names)}")
             m = matches[0]
+            current = owner.get((part, pin))
+            if current == net:
+                done.append(f"{part}.{pin}")
+                continue
+            if current:
+                # NET onto another net opens a modal "merge?" question.
+                raise EcadError(
+                    f"{part}.{pin} is already on net {current}. Connecting it "
+                    f"to {net} would merge the two nets; disconnect it first or "
+                    f"rename {current} with ecad_command NAME.")
             if m.get("sheet") and m["sheet"] != sheet_now:
                 lines.append(core.cmd_edit_sheet(m["sheet"]))
                 sheet_now = m["sheet"]
             end = core.stub_end(m["x"], m["y"], m["inst_x"], m["inst_y"], stub_length)
             lines.append(core.cmd_net(net, [(m["x"], m["y"]), end]))
             done.append(f"{part}.{pin}")
-        r = self._run(lines, editor="schematic")
+        r = self._run(lines, editor="schematic") if lines else {
+            "script_lines": 0, "changes": {}}
         on_net = {f"{c['part']}.{c['pin']}" for n in self._read_nets()
                   if n["name"] == net for c in n["pins"]}
         missing = [x for x in done if x not in on_net]
@@ -895,9 +1078,14 @@ class EcadHandler:
                 raise EcadError(f"Element {name} is not on the board")
             if current[name]["locked"]:
                 raise EcadError(f"{name} is locked; unlock it before moving")
-            lines.append(core.cmd_move(name, it["x"], it["y"]))
             side = it.get("side")
-            mirror = (side == "bottom") if side else current[name]["mirror"]
+            if side and (side == "bottom") != current[name]["mirror"]:
+                raise EcadError(
+                    f"Moving {name} to the {side} side is not possible from "
+                    "code: MIRROR does nothing when scripted. Set the side in "
+                    "ecad_build_design instead.")
+            lines.append(core.cmd_move(name, it["x"], it["y"]))
+            mirror = current[name]["mirror"]
             angle = it.get("angle", current[name]["angle"])
             lines.append(core.cmd_rotate_abs(name, angle, mirror))
             if it.get("lock"):
@@ -1115,36 +1303,73 @@ class EcadHandler:
                 return exact[0]
         return None
 
-    def export_gerbers(self, output_dir, cam_job=None, zip=True):
+    def _check_saved(self, save_first: bool):
+        doc = _safe(lambda: self._design().parentDocument)
+        if doc is None:
+            raise EcadError("Cannot find the design's document")
+        if not _safe(lambda: doc.isSaved, True) or _safe(
+                lambda: doc.isModified, False):
+            if not save_first:
+                raise EcadError(
+                    "Fusion makes manufacturing files from the last saved "
+                    "version, and this design has unsaved changes. Save it "
+                    "(ecad_save_design), or pass save_first=true.")
+            if not doc.save("Saved for manufacturing export"):
+                raise EcadError("Saving the design failed")
+
+    def _cam_export(self, kind, output_dir, cam_job, save_first):
         job = cam_job or self._default_cam_job()
         if not job or not os.path.isfile(job):
             raise EcadError("No CAM job found; pass cam_job with a .cam path")
+        self._check_saved(save_first)
+        output_dir = os.path.abspath(output_dir)
         os.makedirs(output_dir, exist_ok=True)
-        before = set(os.listdir(output_dir))
+        # Fusion ignores the folder's own name and writes to
+        # <parent>/<job>/<job>.gbr/CAMOutputs/... (seen live), so collect
+        # whatever it writes under <parent>/<job> and copy it in.
+        stem = os.path.splitext(os.path.basename(job))[0]
+        written = os.path.join(os.path.dirname(output_dir), stem)
+        start = time.time() - 2
         self._activate("board")
-        out = self._exec_text(f'Electron.mfgexport "{output_dir}" "{job}"')
+        cmd = "Electron.mfgexport" if kind == "gerber" else "Electron.mfgodb"
+        out = self._exec_text(f'{cmd} "{output_dir}" "{job}"')
         adsk.doEvents()
-        files = sorted(set(os.listdir(output_dir)) - before) or sorted(
-            os.listdir(output_dir))
+        files = []
+        for root in {written, output_dir}:
+            for dirpath, _dirs, names in os.walk(root):
+                for n in names:
+                    src = os.path.join(dirpath, n)
+                    if os.path.getmtime(src) < start:
+                        continue
+                    rel = os.path.relpath(src, root)
+                    dst = os.path.join(output_dir, rel)
+                    if os.path.abspath(src) != os.path.abspath(dst):
+                        os.makedirs(os.path.dirname(dst), exist_ok=True)
+                        shutil.copy2(src, dst)
+                    files.append(rel.replace("\\", "/"))
         if not files:
-            raise EcadError(f"CAM export wrote nothing. Fusion said: {out}")
+            raise EcadError(f"CAM export wrote nothing. Fusion said: {out!r}")
+        return job, sorted(set(files)), out
+
+    def export_gerbers(self, output_dir, cam_job=None, zip=True,
+                       save_first=False):
+        job, files, out = self._cam_export("gerber", output_dir, cam_job,
+                                           save_first)
         archive = None
         if zip:
-            archive = shutil.make_archive(os.path.join(output_dir, "gerbers"), "zip",
-                                          output_dir)
+            tmp = shutil.make_archive(
+                os.path.join(tempfile.mkdtemp(prefix="mcp_cam_"), "gerbers"),
+                "zip", os.path.abspath(output_dir))
+            archive = os.path.join(os.path.abspath(output_dir), "gerbers.zip")
+            shutil.move(tmp, archive)
         return {"output_dir": os.path.abspath(output_dir), "cam_job": job,
                 "files": files, "zip": archive, "fusion_output": out}
 
-    def export_odb(self, output_dir, cam_job=None):
-        job = cam_job or self._default_cam_job()
-        if not job:
-            raise EcadError("No CAM job found; pass cam_job")
-        os.makedirs(output_dir, exist_ok=True)
-        self._activate("board")
-        out = self._exec_text(f'Electron.mfgodb "{output_dir}" "{job}"')
-        adsk.doEvents()
+    def export_odb(self, output_dir, cam_job=None, save_first=False):
+        job, files, out = self._cam_export("odb", output_dir, cam_job,
+                                           save_first)
         return {"output_dir": os.path.abspath(output_dir), "cam_job": job,
-                "files": sorted(os.listdir(output_dir)), "fusion_output": out}
+                "files": files, "fusion_output": out}
 
     def export_eagle(self, kind, path):
         product = {"sch": self._sch_or_none(), "brd": self._brd_or_none(),
