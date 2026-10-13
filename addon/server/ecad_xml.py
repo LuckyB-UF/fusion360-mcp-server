@@ -103,17 +103,26 @@ def _text(el: ET.Element | None) -> str:
 
 def list_devices(libraries: dict[str, ET.Element], query: str = "",
                  limit: int = 50) -> list[dict]:
-    """Search devices across libraries (regex over names and description)."""
-    rx = re.compile(query or ".", re.IGNORECASE)
+    """Search devices across libraries.
+
+    *query* is a regex tried against each field on its own (full name,
+    deviceset, device, package, description), so ``^`` and ``$`` anchor to a
+    name.  Text that is not a valid regex is matched literally.
+    """
+    try:
+        rx = re.compile(query or ".", re.IGNORECASE)
+    except re.error:
+        rx = re.compile(re.escape(query), re.IGNORECASE)
     out = []
     for lname, lib in libraries.items():
         for ds in lib.iterfind("devicesets/deviceset"):
             desc = _text(ds.find("description"))
             gates = [g.get("name") for g in ds.iterfind("gates/gate")]
             for dev in ds.iterfind("devices/device"):
-                hay = " ".join([ds.get("name", ""), dev.get("name", ""),
-                                dev.get("package") or "", desc])
-                if not rx.search(hay):
+                fields = (ds.get("name", "") + dev.get("name", ""),
+                          ds.get("name", ""), dev.get("name", ""),
+                          dev.get("package") or "", desc)
+                if not any(rx.search(f) for f in fields):
                     continue
                 out.append({
                     "library": lname,
@@ -390,6 +399,47 @@ def _classes(parent: ET.Element, classes: list[dict]):
                 "value": core.fmt(c["clearance"])})
 
 
+def _pruned_library(lib: ET.Element, lname: str, parts: list,
+                    board: bool = False) -> ET.Element:
+    """Copy of *lib* holding only what *parts* use.
+
+    Bundled libraries such as SmartPrj carry hundreds of packages, and one bad
+    package (a pad on an invalid layer) is enough for Fusion to refuse the
+    whole .brd.  The board copy holds packages only, as EAGLE writes it.
+    """
+    mine = [p for p in parts if p.lname == lname]
+    out = ET.Element("library", name=lname)
+    desc = lib.find("description")
+    if desc is not None and not board:
+        out.append(copy.deepcopy(desc))
+    pkg_names = {p.package for p in mine if p.package}
+    pk = ET.SubElement(out, "packages")
+    for pkg in lib.iterfind("packages/package"):
+        if pkg.get("name") in pkg_names:
+            pk.append(copy.deepcopy(pkg))
+    if board:
+        return out
+    sym_names = {sname for p in mine for _, sname, _, _ in p.gates}
+    sy = ET.SubElement(out, "symbols")
+    for sym in lib.iterfind("symbols/symbol"):
+        if sym.get("name") in sym_names:
+            sy.append(copy.deepcopy(sym))
+    used: dict[str, set] = {}
+    for p in mine:
+        used.setdefault(p.ds.get("name"), set()).add(p.dev.get("name", ""))
+    dss = ET.SubElement(out, "devicesets")
+    for ds in lib.iterfind("devicesets/deviceset"):
+        if ds.get("name") not in used:
+            continue
+        ds = copy.deepcopy(ds)
+        devs = ds.find("devices")
+        for dev in list(devs):
+            if dev.get("name", "") not in used[ds.get("name")]:
+                devs.remove(dev)
+        dss.append(ds)
+    return out
+
+
 def build(spec: dict, libraries: dict[str, ET.Element],
           layers: ET.Element | None = None) -> dict:
     """Spec -> {'sch': xml, 'brd': xml, 'parts': [...], 'nets': [...]}.
@@ -461,9 +511,7 @@ def build(spec: dict, libraries: dict[str, ET.Element],
     s = ET.SubElement(d, "schematic")
     libs = ET.SubElement(s, "libraries")
     for lname in used_libs:
-        lib = copy.deepcopy(libraries[lname])
-        lib.set("name", lname)
-        libs.append(lib)
+        libs.append(_pruned_library(libraries[lname], lname, parts))
     ET.SubElement(s, "attributes")
     ET.SubElement(s, "variantdefs")
     _classes(s, spec.get("classes") or [])
@@ -520,13 +568,10 @@ def build(spec: dict, libraries: dict[str, ET.Element],
     _outline_wires(outline, plain)
     blibs = ET.SubElement(b, "libraries")
     for lname in used_libs:
-        bl = ET.SubElement(blibs, "library", name=lname)
-        pk = libraries[lname].find("packages")
-        bl.append(copy.deepcopy(pk) if pk is not None else ET.Element("packages"))
+        blibs.append(_pruned_library(libraries[lname], lname, parts, board=True))
     ET.SubElement(b, "attributes")
     ET.SubElement(b, "variantdefs")
     _classes(b, spec.get("classes") or [])
-    ET.SubElement(b, "designrules", name="default")
     els = ET.SubElement(b, "elements")
     placed = []
     for p in parts:
@@ -538,9 +583,9 @@ def build(spec: dict, libraries: dict[str, ET.Element],
         rot = _rot(p.board_angle, p.side == "bottom")
         if rot != "R0":
             attrs["rot"] = rot
-        el = ET.SubElement(els, "element", attrs)
-        for k, v in p.attributes.items():
-            ET.SubElement(el, "attribute", name=k, value=v, display="off")
+        # Part attributes (MPN, ...) live on the schematic part; Fusion
+        # copies them to the board, so the element carries none.
+        ET.SubElement(els, "element", attrs)
         placed.append({"name": p.name, "x": p.board[0], "y": p.board[1],
                        "angle": p.board_angle, "side": p.side})
     sigs = ET.SubElement(b, "signals")
@@ -569,7 +614,6 @@ def build(spec: dict, libraries: dict[str, ET.Element],
 
 def _xml(root: ET.Element) -> str:
     return ('<?xml version="1.0" encoding="utf-8"?>\n'
-            '<!DOCTYPE eagle SYSTEM "eagle.dtd">\n'
             + ET.tostring(root, encoding="unicode"))
 
 

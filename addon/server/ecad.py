@@ -331,11 +331,14 @@ class EcadHandler:
         except Exception:
             return False
 
-    def _activate(self, editor: str):
+    def _activate(self, editor: str, create: bool = False):
         """Make *editor* of the working design the active document.
 
         Checked by document, not by editor type: with several designs open,
-        "a schematic is active" is not the same as "ours is".
+        "a schematic is active" is not the same as "ours is".  A missing
+        editor is created only when asked (ecad_open_editor, ecad_new_design)
+        or inside a design these tools made; otherwise a failed build would
+        leave later calls adding editors to whatever design the user has open.
         """
         doc = self._editor_doc(editor)
         if doc is not None:
@@ -346,6 +349,11 @@ class EcadHandler:
                 return
             raise EcadError(f"Could not switch to the {editor} editor")
         # The editor does not exist yet: create it inside this design.
+        if not create and self._pinned_design() is None:
+            raise EcadError(
+                f"The open design ({_name(self._design())}) has no {editor}. "
+                f"Call ecad_open_editor {editor} to create one, or build a "
+                "new design with ecad_build_design.")
         design = self._design()
         self._pin(design)
         design_doc = _safe(lambda: design.parentDocument)
@@ -650,14 +658,14 @@ class EcadHandler:
                      electron.EcadDesignDocument.cast(self.app.activeDocument), 20):
             raise EcadError("Fusion did not open a new electronics design")
         self._pin(electron.EcadDesignDocument.cast(self.app.activeDocument).ecadDesign)
-        self._activate("schematic")
+        self._activate("schematic", create=True)
         if with_board:
-            self._activate("board")
+            self._activate("board", create=True)
         return {"created": True, "design": _name(self._design()),
                 "editor": self._active_editor()}
 
     def open_editor(self, editor: str, sheet: int | None = None):
-        self._activate(editor)
+        self._activate(editor, create=True)
         if editor == "schematic" and sheet:
             self._run([core.cmd_edit_sheet(sheet)], grid_mm=False)
         return {"editor": self._active_editor(), "sheet": sheet}
@@ -791,7 +799,7 @@ class EcadHandler:
                 "truncated": len(results) >= limit}
 
     def build_design(self, parts, outline, nets=None, classes=None,
-                     library_files=None, name="mcp_design"):
+                     library_files=None, name="mcp_design", output_dir=None):
         """Create a new design from a full spec through an EAGLE XML import."""
         libs, layers = self._load_libraries(library_files)
         spec = {"parts": parts, "nets": nets or [], "outline": outline,
@@ -801,7 +809,11 @@ class EcadHandler:
         except ecad_xml.SpecError as exc:
             raise EcadError(str(exc)) from exc
         safe = re.sub(r"[^A-Za-z0-9_-]+", "_", name or "mcp_design")[:40]
-        folder = tempfile.mkdtemp(prefix="mcp_ecad_build_")
+        if output_dir:
+            os.makedirs(output_dir, exist_ok=True)
+            folder = output_dir
+        else:
+            folder = tempfile.mkdtemp(prefix="mcp_ecad_build_")
         sch = os.path.join(folder, safe + ".sch").replace("\\", "/")
         brd = os.path.join(folder, safe + ".brd").replace("\\", "/")
         with open(sch, "w", encoding="utf-8") as f:
@@ -823,8 +835,13 @@ class EcadHandler:
 
         if not _pump(lambda: new_design() is not None and _safe(
                 lambda: new_design().board) is not None, 60):
-            raise EcadError(f"The import did not open a new design. Fusion "
-                            f"said: {out!r}")
+            closed = self._close_new_docs(before)
+            self._pinned = None
+            raise EcadError(
+                f"Fusion could not import the generated design (it said "
+                f"{out!r}). The files are kept for inspection: {sch} and "
+                f"{brd}." + (f" Closed the partial import without saving: "
+                             f"{', '.join(closed)}." if closed else ""))
         self._pin(new_design())
         self._stop_command()
         got_parts = {p["name"] for p in self._read_parts()}
@@ -852,6 +869,14 @@ class EcadHandler:
                 "nets": len(got_nets), "libraries": built["libraries"],
                 "placed": built["placed"], "files": {"sch": sch, "brd": brd},
                 **({} if ok else {"problems": problems})}
+
+    def _close_new_docs(self, before: set) -> list[str]:
+        """Close, without saving, documents opened since *before* was taken."""
+        closed = []
+        for d in _items(self.app.documents):
+            if d.name not in before and _safe(lambda: d.close(False), False):
+                closed.append(d.name)
+        return closed
 
     def render(self, editor: str = "board", sheet: int | None = None,
                preset: str = "all", layers=None, dpi: int = 300,

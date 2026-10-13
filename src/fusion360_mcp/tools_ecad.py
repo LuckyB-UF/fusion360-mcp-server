@@ -227,6 +227,14 @@ ECAD_TOOLS: list[dict] = [
             "required": ["parts", "outline"],
             "properties": {
                 "name": {"type": "string", "description": "Design file name"},
+                "output_dir": {
+                    "type": "string",
+                    "description": (
+                        "Folder on the Fusion PC to keep the generated .sch "
+                        "and .brd in (default: a new temp folder). The paths "
+                        "come back either way."
+                    ),
+                },
                 "parts": {
                     "type": "array",
                     "items": {

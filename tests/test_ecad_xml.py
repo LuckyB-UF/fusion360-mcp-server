@@ -48,8 +48,8 @@ SPEC = {
 
 def _build(spec=SPEC):
     out = ex.build(spec, LIBS)
-    return out, ET.fromstring(out["sch"].split("\n", 2)[2]), \
-        ET.fromstring(out["brd"].split("\n", 2)[2])
+    return out, ET.fromstring(out["sch"].split("\n", 1)[1]), \
+        ET.fromstring(out["brd"].split("\n", 1)[1])
 
 
 def test_library_named_after_file():
@@ -158,3 +158,28 @@ def test_libraries_from_schematic_file():
     text = ET.tostring(sch_root, encoding="unicode")
     libs = ex.libraries_from_xml(text, "x.sch")
     assert "classic" in libs
+
+
+def test_libraries_pruned_to_what_parts_use():
+    spec = {"parts": [{"name": "R1", "library": "classic", "device": "R-EU_R0603"}],
+            "outline": {"width": 10, "height": 10}}
+    _, sch, brd = _build(spec)
+    lib = sch.find("drawing/schematic/libraries/library")
+    assert [d.get("name") for d in lib.iter("deviceset")] == ["R-EU_"]
+    assert [p.get("name") for p in lib.iter("package")] == ["R0603"]
+    blib = brd.find("drawing/board/libraries/library")
+    assert [p.get("name") for p in blib.iter("package")] == ["R0603"]
+    assert blib.find("devicesets") is None
+    assert brd.find("drawing/board/designrules") is None
+
+
+def test_no_doctype_line():
+    out = ex.build(SPEC, LIBS)
+    assert "DOCTYPE" not in out["brd"] and "DOCTYPE" not in out["sch"]
+
+
+def test_list_devices_anchors_per_field():
+    assert [h["full_name"] for h in ex.list_devices(LIBS, "^R-EU_R0603$")] == \
+        ["R-EU_R0603"]
+    assert [h["full_name"] for h in ex.list_devices(LIBS, "^GND$")] == ["GND"]
+    assert ex.list_devices(LIBS, "(") == []  # invalid regex: literal, no crash
