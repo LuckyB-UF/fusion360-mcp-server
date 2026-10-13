@@ -50,6 +50,9 @@ class EcadError(RuntimeError):
 # ----------------------------------------------------------------------
 
 
+_MAX_ITEMS = 100000
+
+
 def _items(coll):
     """Iterate a Fusion collection or an EcadObjectVector."""
     if coll is None:
@@ -59,11 +62,22 @@ def _items(coll):
     except Exception:
         n = None
     if n is not None and hasattr(coll, "item"):
-        return [coll.item(i) for i in range(n)]
+        return [coll.item(i) for i in range(min(n, _MAX_ITEMS))]
     try:
-        return list(coll)
+        n = len(coll)
     except Exception:
-        return []
+        n = None
+    out = []
+    try:
+        # A vector on a half-linked (imported, unsaved) design may never end
+        # its iteration; a bound keeps one bad read from hanging Fusion.
+        for i, x in enumerate(coll):
+            if i >= (n if n is not None else _MAX_ITEMS):
+                break
+            out.append(x)
+    except Exception:
+        pass
+    return out
 
 
 def _known(doc, docs: list) -> bool:
