@@ -66,6 +66,11 @@ def _items(coll):
         return []
 
 
+def _known(doc, docs: list) -> bool:
+    """Whether *doc* is one of *docs* (Fusion objects compare by identity)."""
+    return any(_safe(lambda: doc == d, False) for d in docs)
+
+
 def _g(obj, *names, default=None):
     """First readable attribute of *obj* among *names*."""
     for n in names:
@@ -820,13 +825,15 @@ class EcadHandler:
             f.write(built["sch"])
         with open(brd, "w", encoding="utf-8") as f:
             f.write(built["brd"])
-        before = {d.name for d in _items(self.app.documents)}
+        # Imported documents are all named "Untitled", like any other new
+        # tab, so tell them apart by identity, not by name.
+        before = _items(self.app.documents)
         t0 = time.monotonic()
         out = self._exec_text(f'Electron.importSchAndBrd "{sch}" "{brd}"')
 
         def new_design():
             for d in _items(self.app.documents):
-                if d.name in before:
+                if _known(d, before):
                     continue
                 e = electron.EcadDesignDocument.cast(d)
                 if e:
@@ -870,11 +877,11 @@ class EcadHandler:
                 "placed": built["placed"], "files": {"sch": sch, "brd": brd},
                 **({} if ok else {"problems": problems})}
 
-    def _close_new_docs(self, before: set) -> list[str]:
+    def _close_new_docs(self, before: list) -> list[str]:
         """Close, without saving, documents opened since *before* was taken."""
         closed = []
-        for d in _items(self.app.documents):
-            if d.name not in before and _safe(lambda: d.close(False), False):
+        for d in reversed(_items(self.app.documents)):
+            if not _known(d, before) and _safe(lambda: d.close(False), False):
                 closed.append(d.name)
         return closed
 
