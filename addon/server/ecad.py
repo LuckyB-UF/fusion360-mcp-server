@@ -190,6 +190,11 @@ class EcadHandler:
         # imports one, because Fusion's active document can jump to another
         # open schematic between commands (seen in live testing).
         self._pinned = None
+        # Documents of the pinned design: {"design" | "schematic" | "board":
+        # Document}.  An imported design's schematic and PCB documents are
+        # not linked to it in the API until it is saved (design.schematic
+        # raises, schematic.parentDesign is None), so they are kept here.
+        self._docs: dict = {}
 
     def commands(self) -> dict:
         return {
@@ -244,18 +249,45 @@ class EcadHandler:
                 "Update Fusion to May 2026 or later."
             )
 
-    def _pin(self, design):
+    def _pin(self, design, docs: dict | None = None):
         self._pinned = design
+        self._docs = dict(docs or {})
+
+    def _unpin(self):
+        self._pinned = None
+        self._docs = {}
 
     def _pinned_design(self):
         d = self._pinned
         if d is None:
             return None
-        if not _safe(lambda: d.isValid, True) or _safe(
-                lambda: d.parentDocument.isValid, True) is False:
-            self._pinned = None
+        doc = self._docs.get("design")
+        if not _safe(lambda: d.isValid, True) or (
+                doc is not None and not _safe(lambda: doc.isValid, False)) or (
+                doc is None and _safe(lambda: d.parentDocument.isValid,
+                                      True) is False):
+            self._unpin()
             return None
         return d
+
+    def _pinned_doc(self, kind: str):
+        """The pinned design's *kind* document, if it is still open."""
+        if self._pinned_design() is None:
+            return None
+        doc = self._docs.get(kind)
+        if doc is not None and not _safe(lambda: doc.isValid, False):
+            self._docs.pop(kind, None)
+            return None
+        return doc
+
+    def _design_doc(self):
+        doc = self._pinned_doc("design")
+        if doc is not None:
+            return doc
+        doc = _safe(lambda: self._design().parentDocument)
+        if doc is None:
+            raise EcadError("Cannot find the design's document")
+        return doc
 
     def _design(self):
         """The EcadDesign the tools work on (pinned, else the active one)."""
@@ -283,7 +315,7 @@ class EcadHandler:
         )
 
     def _sch(self):
-        s = _safe(lambda: self._design().schematic)
+        s = self._sch_or_none()
         if s is None:
             raise EcadError(
                 "This electronics design has no schematic yet. Call "
@@ -292,7 +324,7 @@ class EcadHandler:
         return s
 
     def _brd(self):
-        b = _safe(lambda: self._design().board)
+        b = self._brd_or_none()
         if b is None:
             raise EcadError(
                 "This electronics design has no PCB yet. Call "
@@ -301,9 +333,15 @@ class EcadHandler:
         return b
 
     def _sch_or_none(self):
+        doc = self._pinned_doc("schematic")
+        if doc is not None:
+            return _safe(lambda: electron.SchematicDocument.cast(doc).schematic)
         return _safe(lambda: self._design().schematic)
 
     def _brd_or_none(self):
+        doc = self._pinned_doc("board")
+        if doc is not None:
+            return _safe(lambda: electron.BoardDocument.cast(doc).board)
         return _safe(lambda: self._design().board)
 
     def _active_editor(self) -> str | None:
@@ -323,6 +361,9 @@ class EcadHandler:
     }
 
     def _editor_doc(self, editor: str):
+        doc = self._pinned_doc(editor)
+        if doc is not None:
+            return doc
         target = (self._brd_or_none() if editor == "board"
                   else self._sch_or_none())
         return _safe(lambda: target.parentDocument) if target is not None else None
@@ -332,7 +373,7 @@ class EcadHandler:
         if act is None or doc is None:
             return False
         try:
-            return act == doc or (act.name == doc.name and act.isActive)
+            return act == doc
         except Exception:
             return False
 
@@ -361,7 +402,7 @@ class EcadHandler:
                 "new design with ecad_build_design.")
         design = self._design()
         self._pin(design)
-        design_doc = _safe(lambda: design.parentDocument)
+        design_doc = _safe(self._design_doc)
         if design_doc is not None and not self._is_active(design_doc):
             _safe(design_doc.activate)
             _pump(lambda: self._is_active(design_doc), 10)
@@ -676,9 +717,7 @@ class EcadHandler:
         return {"editor": self._active_editor(), "sheet": sheet}
 
     def save_design(self, description: str = "", milestone: bool = False):
-        doc = self._design().parentDocument
-        if doc is None:
-            raise EcadError("Cannot find the design's document")
+        doc = self._design_doc()
         ok = doc.saveMilestone(description) if milestone else doc.save(description)
         return {"saved": bool(ok), "milestone": milestone, "name": doc.name}
 
@@ -831,25 +870,35 @@ class EcadHandler:
         t0 = time.monotonic()
         out = self._exec_text(f'Electron.importSchAndBrd "{sch}" "{brd}"')
 
-        def new_design():
+        def new_docs():
+            """{"design", "schematic", "board": Document} opened by the import."""
+            found = {}
             for d in _items(self.app.documents):
                 if _known(d, before):
                     continue
-                e = electron.EcadDesignDocument.cast(d)
-                if e:
-                    return e.ecadDesign
-            return None
+                for kind, cls in (("design", electron.EcadDesignDocument),
+                                  ("schematic", electron.SchematicDocument),
+                                  ("board", electron.BoardDocument)):
+                    if kind not in found and _safe(lambda: cls.cast(d)):
+                        found[kind] = d
+            return found
 
-        if not _pump(lambda: new_design() is not None and _safe(
-                lambda: new_design().board) is not None, 60):
+        def complete():
+            got = new_docs()
+            return len(got) == 3 and _safe(lambda: electron.BoardDocument.cast(
+                got["board"]).board.elements.count) is not None
+
+        if not _pump(complete, 60):
             closed = self._close_new_docs(before)
-            self._pinned = None
+            self._unpin()
             raise EcadError(
                 f"Fusion could not import the generated design (it said "
                 f"{out!r}). The files are kept for inspection: {sch} and "
                 f"{brd}." + (f" Closed the partial import without saving: "
                              f"{', '.join(closed)}." if closed else ""))
-        self._pin(new_design())
+        docs = new_docs()
+        self._pin(electron.EcadDesignDocument.cast(docs["design"]).ecadDesign,
+                  docs)
         self._stop_command()
         got_parts = {p["name"] for p in self._read_parts()}
         got_elements = {e["name"] for e in self._read_elements()}
@@ -881,8 +930,11 @@ class EcadHandler:
         """Close, without saving, documents opened since *before* was taken."""
         closed = []
         for d in reversed(_items(self.app.documents)):
-            if not _known(d, before) and _safe(lambda: d.close(False), False):
-                closed.append(d.name)
+            if _known(d, before):
+                continue
+            name = _safe(lambda: d.name, "?")  # unreadable once closed
+            if _safe(lambda: d.close(False), False):
+                closed.append(name)
         return closed
 
     def render(self, editor: str = "board", sheet: int | None = None,
@@ -1343,9 +1395,7 @@ class EcadHandler:
         return None
 
     def _check_saved(self, save_first: bool):
-        doc = _safe(lambda: self._design().parentDocument)
-        if doc is None:
-            raise EcadError("Cannot find the design's document")
+        doc = self._design_doc()
         if not _safe(lambda: doc.isSaved, True) or _safe(
                 lambda: doc.isModified, False):
             if not save_first:
