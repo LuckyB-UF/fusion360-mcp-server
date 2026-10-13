@@ -20,6 +20,7 @@ import math
 import os
 import re
 import shutil
+import sys
 import tempfile
 import time
 
@@ -129,11 +130,17 @@ def _running_install() -> str | None:
     Several versions can sit side by side under webdeploy/production, and
     the newest folder is not always the one running.
     """
-    here = os.path.dirname(os.path.abspath(os.__file__))
-    for _ in range(6):
-        if os.path.isdir(os.path.join(here, "Applications", "Electron")):
-            return here
-        here = os.path.dirname(here)
+    # Fusion's Python is embedded (os has no __file__); adsk.core and the
+    # executable both live inside the install folder.
+    starts = [getattr(adsk.core, "__file__", None), sys.executable]
+    for start in starts:
+        if not start:
+            continue
+        here = os.path.dirname(os.path.abspath(start))
+        for _ in range(8):
+            if os.path.isdir(os.path.join(here, "Applications", "Electron")):
+                return here
+            here = os.path.dirname(here)
     return None
 
 
