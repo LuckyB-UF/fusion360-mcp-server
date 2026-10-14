@@ -6,6 +6,8 @@ per-format exports and ``delete_all``.  Kept out of the default listing
 so a new agent starts with fewer tools.  Lengths are centimetres.
 """
 
+from collections.abc import Callable
+
 from ._flags import DESTRUCTIVE, IDEMPOTENT, READ_ONLY
 
 TOOLSET = "modeling_advanced"
@@ -801,3 +803,246 @@ TOOLS: list[dict] = [
         "annotations": DESTRUCTIVE,
     },
 ]
+
+
+# ── mocks (--mode mock) ────────────────────────────────────────────────────
+
+
+def _sweep(p: dict) -> dict:
+    return {
+        "body_name": "Body_mock_sweep",
+        "path_sketch_name": p.get("path_sketch_name", "PathSketch"),
+        "operation": p.get("operation", "new_body"),
+    }
+
+
+def _loft(p: dict) -> dict:
+    return {
+        "body_name": "Body_mock_loft",
+        "profile_sketch_names": p.get("profile_sketch_names", []),
+        "operation": p.get("operation", "new_body"),
+    }
+
+
+def _create_thread(p: dict) -> dict:
+    return {
+        "body_name": p.get("body_name", "Body1"),
+        "face_index": p.get("face_index", 0),
+        "is_modeled": p.get("is_modeled", False),
+        "thread_designation": p.get("thread_designation", "M10x1.5"),
+    }
+
+
+def _draft_faces(p: dict) -> dict:
+    return {
+        "body_name": p.get("body_name", "Body1"),
+        "angle": p.get("angle", 5),
+        "face_count": 4,
+    }
+
+
+def _split_body(p: dict) -> dict:
+    return {
+        "body_name": p.get("body_name", "Body1"),
+        "result_bodies": ["Body1", "Body1_split"],
+    }
+
+
+def _split_face(p: dict) -> dict:
+    return {
+        "body_name": p.get("body_name", "Body1"),
+        "faces_split": 2,
+    }
+
+
+def _offset_faces(p: dict) -> dict:
+    return {
+        "body_name": p.get("body_name", "Body1"),
+        "distance": p.get("distance", 0.5),
+    }
+
+
+def _scale_body(p: dict) -> dict:
+    return {
+        "body_name": p.get("body_name", "Body1"),
+        "scale": p.get("scale", 1.0),
+    }
+
+
+def _suppress_feature(p: dict) -> dict:
+    return {
+        "feature_name": p.get("feature_name", "Feature1"),
+        "suppressed": True,
+    }
+
+
+def _unsuppress_feature(p: dict) -> dict:
+    return {
+        "feature_name": p.get("feature_name", "Feature1"),
+        "suppressed": False,
+    }
+
+
+def _create_box(p: dict) -> dict:
+    return {
+        "body_name": "Box_mock",
+        "length": p.get("length", 1),
+        "width": p.get("width", 1),
+        "height": p.get("height", 1),
+    }
+
+
+def _create_box_parametric(p: dict) -> dict:
+    return {
+        "created": True,
+        "body_name": p.get("body_name") or "BoxParametric_mock",
+        "feature_name": "Extrude_mock",
+        "sketch_name": "Sketch_mock",
+        "length": p.get("length", 1),
+        "width": p.get("width", 1),
+        "height": p.get("height", 1),
+        "origin": [
+            p.get("origin_x", 0),
+            p.get("origin_y", 0),
+            p.get("origin_z", 0),
+        ],
+        "plane": p.get("plane", "xy"),
+        "component": p.get("component_name") or "RootComponent",
+    }
+
+
+def _create_cylinder(p: dict) -> dict:
+    return {
+        "body_name": "Cylinder_mock",
+        "radius": p.get("radius", 1),
+        "height": p.get("height", 1),
+    }
+
+
+def _create_sphere(p: dict) -> dict:
+    return {
+        "body_name": "Sphere_mock",
+        "radius": p.get("radius", 1),
+    }
+
+
+def _create_torus(p: dict) -> dict:
+    return {
+        "body_name": "Torus_mock",
+        "major_radius": p.get("major_radius", 2),
+        "minor_radius": p.get("minor_radius", 0.5),
+    }
+
+
+def _create_construction_plane(p: dict) -> dict:
+    return {
+        "plane_name": "ConstructionPlane_mock",
+        "method": p.get("method", "offset"),
+    }
+
+
+def _create_construction_axis(p: dict) -> dict:
+    return {
+        "axis_name": "ConstructionAxis_mock",
+        "method": p.get("method", "two_points"),
+    }
+
+
+def _get_parameters(_p: dict) -> dict:
+    return {
+        "parameters": [
+            {"name": "width", "value": 10.0, "unit": "mm", "comment": ""},
+            {"name": "height", "value": 5.0, "unit": "mm", "comment": ""},
+        ],
+    }
+
+
+def _create_parameter(p: dict) -> dict:
+    return {
+        "name": p.get("name", "param1"),
+        "value": p.get("value", 0),
+        "unit": p.get("unit", "mm"),
+        "comment": p.get("comment", ""),
+    }
+
+
+def _set_parameter(p: dict) -> dict:
+    return {"name": p.get("name", "param1"), "value": p.get("value", 0)}
+
+
+def _delete_parameter(p: dict) -> dict:
+    return {"name": p.get("name", "param1"), "deleted": True}
+
+
+def _set_appearance(p: dict) -> dict:
+    return {
+        "target_name": p.get("target_name", "Body1"),
+        "appearance_name": p.get("appearance_name", "Steel - Satin"),
+        "applied": True,
+    }
+
+
+def _export_stl(p: dict) -> dict:
+    name = p.get("body_name", "Body1")
+    path = p.get("file_path", f"~/Desktop/{name}.stl")
+    return {"body_name": name, "file_path": path}
+
+
+def _export_step(p: dict) -> dict:
+    name = p.get("body_name", "Body1")
+    path = p.get("file_path", f"~/Desktop/{name}.step")
+    return {"body_name": name, "file_path": path}
+
+
+def _export_f3d(p: dict) -> dict:
+    path = p.get("file_path", "~/Desktop/MockDesign.f3d")
+    return {"file_path": path}
+
+
+def _export_view_sheet(p: dict) -> dict:
+    views = p.get("views") or ["iso", "front", "top", "right"]
+    size = p.get("image_size") or [1200, 900]
+    out = p.get("output_dir", "~/Desktop/MockDesign_views_mock")
+    title = p.get("title", "MockDesign")
+    return {
+        "html_path": f"{out}/view_sheet.html",
+        "output_dir": out,
+        "title": title,
+        "image_size": list(size),
+        "views": [{"view": v, "path": f"{out}/{v}.png"} for v in views],
+    }
+
+
+def _delete_all(_p: dict) -> dict:
+    return {"deleted": True}
+
+
+MOCKS: dict[str, Callable[[dict], dict]] = {
+    "sweep": _sweep,
+    "loft": _loft,
+    "create_thread": _create_thread,
+    "draft_faces": _draft_faces,
+    "split_body": _split_body,
+    "split_face": _split_face,
+    "offset_faces": _offset_faces,
+    "scale_body": _scale_body,
+    "suppress_feature": _suppress_feature,
+    "unsuppress_feature": _unsuppress_feature,
+    "create_box": _create_box,
+    "create_box_parametric": _create_box_parametric,
+    "create_cylinder": _create_cylinder,
+    "create_sphere": _create_sphere,
+    "create_torus": _create_torus,
+    "create_construction_plane": _create_construction_plane,
+    "create_construction_axis": _create_construction_axis,
+    "get_parameters": _get_parameters,
+    "create_parameter": _create_parameter,
+    "set_parameter": _set_parameter,
+    "delete_parameter": _delete_parameter,
+    "set_appearance": _set_appearance,
+    "export_stl": _export_stl,
+    "export_step": _export_step,
+    "export_f3d": _export_f3d,
+    "export_view_sheet": _export_view_sheet,
+    "delete_all": _delete_all,
+}

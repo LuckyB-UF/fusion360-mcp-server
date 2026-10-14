@@ -4,6 +4,8 @@ Health, scene queries, design type, undo, ``execute_code``, ``render_view``
 and the unified ``export`` / ``import_mesh``.
 """
 
+from collections.abc import Callable
+
 from ._flags import IDEMPOTENT, READ_ONLY
 
 TOOLSET = "core"
@@ -240,3 +242,122 @@ TOOLS: list[dict] = [
         },
     },
 ]
+
+
+# ── mocks (--mode mock) ────────────────────────────────────────────────────
+
+# 1x1 transparent PNG, enough to exercise the image-content code path.
+_MOCK_PNG_B64 = (
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0l"
+    "EQVR42mNkAAIAAAoAAv/lxKUAAAAASUVORK5CYII="
+)
+
+
+def _ping(_p: dict) -> dict:
+    return {"status": "pong"}
+
+
+def _get_scene_info(_p: dict) -> dict:
+    return {
+        "design_name": "MockDesign",
+        "bodies": ["Body1"],
+        "sketches": ["Sketch1"],
+        "features": ["Extrude1"],
+        "components": ["RootComponent"],
+    }
+
+
+def _get_object_info(p: dict) -> dict:
+    name = p.get("name", "Unknown")
+    return {
+        "name": name,
+        "type": "BRepBody",
+        "faces": 6,
+        "edges": 12,
+        "vertices": 8,
+        "bounding_box": {"min": [0, 0, 0], "max": [1, 1, 1]},
+    }
+
+
+def _list_components(_p: dict) -> dict:
+    return {
+        "components": [
+            {"name": "RootComponent", "bodies": ["Body1"]},
+            {"name": "SubComponent1", "bodies": []},
+        ],
+    }
+
+
+def _get_design_type(_p: dict) -> dict:
+    return {"design_type": "parametric", "design_type_id": 1}
+
+
+def _set_design_type(p: dict) -> dict:
+    dt = p.get("design_type", "parametric")
+    return {"changed": True, "design_type": dt}
+
+
+def _undo(_p: dict) -> dict:
+    return {"undone": True, "design_type": 1}
+
+
+def _execute_code(p: dict) -> dict:
+    return {"executed": True, "code": p.get("code", ""), "result": "None", "output": ""}
+
+
+def _render_view(p: dict) -> dict:
+    return {
+        "view": p.get("view", "current"),
+        "width": int(p.get("width", 1024)),
+        "height": int(p.get("height", 768)),
+        "image_format": "png",
+        "image_base64": _MOCK_PNG_B64,
+        "bytes": len(_MOCK_PNG_B64),
+    }
+
+
+def _export(p: dict) -> dict:
+    fmt = (p.get("format") or "").lower()
+    path = p.get("file_path", "")
+    if not fmt and path:
+        fmt = path.rsplit(".", 1)[-1].lower() if "." in path else ""
+    name = p.get("body_name", "Body1")
+    return {
+        "exported": True,
+        "format": fmt or "f3d",
+        "body": name,
+        "file_path": path or f"~/Desktop/{name}.{fmt or 'f3d'}",
+    }
+
+
+def _import_mesh(p: dict) -> dict:
+    path = p.get("file_path", "/tmp/mesh.stl")
+    units = p.get("units", "mm")
+    component = p.get("component_name") or "RootComponent"
+    return {
+        "imported": True,
+        "file_path": path,
+        "mesh_name": "MeshBody_mock",
+        "component": component,
+        "units": units,
+        "bounding_box": {
+            "min": [0.0, 0.0, 0.0],
+            "max": [10.0, 5.0, 2.0],
+            "size": [10.0, 5.0, 2.0],
+        },
+    }
+
+
+MOCKS: dict[str, Callable[[dict], dict]] = {
+    "ping": _ping,
+    "get_scene_info": _get_scene_info,
+    "get_object_info": _get_object_info,
+    "list_components": _list_components,
+    "get_design_type": _get_design_type,
+    "set_design_type": _set_design_type,
+    "undo": _undo,
+    "execute_code": _execute_code,
+    "render_view": _render_view,
+    "export": _export,
+    "import_mesh": _import_mesh,
+}

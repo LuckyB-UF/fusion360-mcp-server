@@ -2,6 +2,8 @@
 surfaces; flanges, bends, flat patterns and unfolds.
 """
 
+from collections.abc import Callable
+
 TOOLSET = "surface_sheetmetal"
 SUMMARY = (
     "Surfaces (patch, stitch, thicken, ruled, trim) and sheet metal "
@@ -209,3 +211,91 @@ TOOLS: list[dict] = [
         },
     },
 ]
+
+
+# ── mocks (--mode mock) ────────────────────────────────────────────────────
+
+
+def _patch_surface(p: dict) -> dict:
+    return {
+        "sketch_name": p.get("sketch_name", "Sketch1"),
+        "body_name": "PatchSurface_mock",
+        "continuity": p.get("continuity", "connected"),
+    }
+
+
+def _stitch_surfaces(p: dict) -> dict:
+    return {
+        "body_names": p.get("body_names", []),
+        "result_body": "StitchedBody_mock",
+        "tolerance": p.get("tolerance", 0.01),
+    }
+
+
+def _thicken_surface(p: dict) -> dict:
+    return {
+        "body_name": p.get("body_name", "Surface1"),
+        "thickness": p.get("thickness", 0.1),
+        "result_body": "ThickenedBody_mock",
+    }
+
+
+def _ruled_surface(p: dict) -> dict:
+    return {
+        "body_name": p.get("body_name", "Body1"),
+        "edge_index": p.get("edge_index", 0),
+        "distance": p.get("distance", 1.0),
+        "result_body": "RuledSurface_mock",
+    }
+
+
+def _trim_surface(p: dict) -> dict:
+    return {
+        "body_name": p.get("body_name", "Surface1"),
+        "tool_name": p.get("tool_name", "Tool1"),
+        "trimmed": True,
+    }
+
+
+def _create_flange(p: dict) -> dict:
+    return {
+        "body_name": p.get("body_name", "SheetBody1"),
+        "edge_index": p.get("edge_index", 0),
+        "height": p.get("height", 1.0),
+        "angle": p.get("angle", 90),
+    }
+
+
+def _create_bend(p: dict) -> dict:
+    return {
+        "body_name": p.get("body_name", "SheetBody1"),
+        "angle": p.get("angle", 90),
+        "bend_radius": p.get("bend_radius", 0.1),
+    }
+
+
+def _flat_pattern(p: dict) -> dict:
+    return {
+        "body_name": p.get("body_name", "SheetBody1"),
+        "flat_pattern_name": "FlatPattern_mock",
+    }
+
+
+def _unfold(p: dict) -> dict:
+    return {
+        "body_name": p.get("body_name", "SheetBody1"),
+        "bends_unfolded": len(p.get("bend_indices", [0, 1])),
+    }
+
+
+MOCKS: dict[str, Callable[[dict], dict]] = {
+    "patch_surface": _patch_surface,
+    "stitch_surfaces": _stitch_surfaces,
+    "thicken_surface": _thicken_surface,
+    "ruled_surface": _ruled_surface,
+    "trim_surface": _trim_surface,
+    "create_flange": _create_flange,
+    "create_bend": _create_bend,
+    "flat_pattern": _flat_pattern,
+    "unfold": _unfold,
+}

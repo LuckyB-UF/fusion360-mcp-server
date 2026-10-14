@@ -1,8 +1,9 @@
-"""One module per toolset; each owns its tool schemas.
+"""One module per toolset; each owns its tool schemas and mocks.
 
 A module exports ``TOOLSET`` (its name), ``SUMMARY`` (one line for
-``fusion_toolsets``) and ``TOOLS`` (schema dicts with annotation flags
-inline).  ``DOMAINS`` fixes the order tools are listed in.
+``fusion_toolsets``), ``TOOLS`` (schema dicts with annotation flags inline)
+and ``MOCKS`` (tool name -> ``--mode mock`` handler).  ``DOMAINS`` fixes the
+order tools are listed in.
 """
 
 from . import (

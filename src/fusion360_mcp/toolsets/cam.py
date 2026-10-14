@@ -2,6 +2,9 @@
 post-processing.
 """
 
+from collections.abc import Callable
+
+from ..hints import classify as _classify
 from ._flags import READ_ONLY
 
 TOOLSET = "cam"
@@ -268,3 +271,242 @@ TOOLS: list[dict] = [
         "annotations": READ_ONLY,
     },
 ]
+
+
+# ── mocks (--mode mock) ────────────────────────────────────────────────────
+
+
+def _cam_create_setup(p: dict) -> dict:
+    stock_mode = p.get("stock_mode", "relative_box")
+    if stock_mode != "relative_box":
+        message = (
+            f"stock_mode '{stock_mode}' cannot be applied through this tool. "
+            "'fixed_box' needs explicit stock dimensions and 'from_body' "
+            "needs a stock body, and neither argument exists on this tool. "
+            "Use 'relative_box' with the stock_offset_* arguments, or set "
+            "the stock mode through execute_code."
+        )
+        kind, hint_list = _classify(message)
+        return {
+            "ok": False,
+            "error_kind": kind,
+            "error_message": message,
+            "hints": hint_list,
+            "traceback": f"MockError: {message}",
+            "mode": "mock",
+        }
+    offsets = {
+        "job_stockOffsetSides": p.get("stock_offset_sides", 0),
+        "job_stockOffsetTop": p.get("stock_offset_top", 0),
+        "job_stockOffsetBottom": p.get("stock_offset_bottom", 0),
+    }
+    applied = {
+        "stock_mode": {"value": 1},
+        "job_stockOffsetMode": {"expression": "'simple'", "value": "simple"},
+    }
+    for name, value in offsets.items():
+        applied[name] = {"expression": f"{value} cm", "value": value}
+
+    return {
+        "setup_name": p.get("name", "Setup1"),
+        "body_name": p.get("body_name", "Body1"),
+        "operation_type": p.get("operation_type", "milling"),
+        "stock_mode": stock_mode,
+        "applied": applied,
+        "failed": {},
+    }
+
+
+def _cam_list_strategies(p: dict) -> dict:
+    """A representative slice of a real turning setup's compatible list.
+
+    Names are Fusion's internal strategy names, read off a live turning setup,
+    not the friendlier titles shown in the UI.
+    """
+    return {
+        "setup": p.get("setup_name", "Setup1"),
+        "turning": [
+            {"name": "turning_face", "title": "Turning Face"},
+            {
+                "name": "turning_profile_roughing",
+                "title": "Turning Profile Roughing",
+            },
+            {
+                "name": "turning_profile_finishing",
+                "title": "Turning Profile Finishing",
+            },
+            {
+                "name": "turning_groove_roughing",
+                "title": "Turning Groove Roughing",
+            },
+            {"name": "turning_thread", "title": "Turning Thread"},
+            {"name": "turning_part", "title": "Turning Part"},
+        ],
+        "milling": [
+            {"name": "face", "title": "Face"},
+            {"name": "contour2d", "title": "2D Contour"},
+            {"name": "pocket2d", "title": "2D Pocket"},
+            {"name": "adaptive2d", "title": "2D Adaptive Clearing"},
+            {"name": "drill", "title": "Drill"},
+            {"name": "bore", "title": "Bore"},
+        ],
+        "count": 12,
+    }
+
+
+def _cam_create_operation(p: dict) -> dict:
+    """Mirror the addon: report Fusion's read-back, not the request.
+
+    Lengths are given in cm and stored in mm, so the read-back value is ten
+    times the argument. The mock reproduces that so a caller testing against
+    ``--mode mock`` sees the same shape and the same unit shift as Fusion.
+    """
+    applied = {}
+
+    if p.get("tool_number") is not None:
+        tool_source = f"document tool library, tool number {p['tool_number']}"
+    elif p.get("tool_diameter"):
+        tool_source = f"diameter {p['tool_diameter']} cm"
+    else:
+        tool_source = None
+
+    if p.get("tool_number") is None and p.get("tool_diameter"):
+        applied["tool_diameter"] = {
+            "expression": f"{p['tool_diameter']} cm",
+            "value": p["tool_diameter"],
+        }
+    if p.get("stepdown"):
+        applied["maximumStepdown"] = {
+            "expression": f"{p['stepdown']} cm",
+            "value": p["stepdown"],
+        }
+    if p.get("stepover"):
+        applied["stepover"] = {
+            "expression": f"{p['stepover']} cm",
+            "value": p["stepover"],
+        }
+    if p.get("feed_rate") is not None:
+        applied["tool_feedCutting"] = {
+            "expression": f"{p['feed_rate']} cm/min",
+            "value": p["feed_rate"] * 10,
+        }
+    if p.get("spindle_speed") is not None:
+        applied["tool_spindleSpeed"] = {
+            "expression": f"{int(p['spindle_speed'])}.rpm",
+            "value": float(int(p["spindle_speed"])),
+        }
+    coolant = p.get("coolant", "flood")
+    if coolant:
+        applied["tool_coolant"] = {"expression": f"'{coolant}'", "value": coolant}
+
+    return {
+        "setup_name": p.get("setup_name", "Setup1"),
+        "operation_name": p.get("name", "Operation1"),
+        "strategy": p.get("strategy", "2d_contour"),
+        "tool_diameter": p.get("tool_diameter", 0.6),
+        "tool": tool_source,
+        "applied": applied,
+        "failed": {},
+    }
+
+
+def _cam_generate_toolpath(p: dict) -> dict:
+    """Mirror the addon: a completed future is not a successful toolpath.
+
+    The mock reports the same per-operation status the addon reads back, so a
+    caller can write a gate against ``failures`` and have it behave the same
+    in mock mode and in Fusion.
+    """
+    name = p.get("operation_name") or "Operation1"
+    if p.get("generate_all"):
+        scope = "all"
+    elif p.get("operation_name"):
+        scope = "operation"
+    else:
+        scope = "setup"
+
+    status = {
+        "name": name,
+        "has_toolpath": True,
+        "is_toolpath_valid": True,
+        "has_error": False,
+        "error": "",
+        "has_warning": False,
+        "warning": "",
+    }
+    return {
+        "scope": scope,
+        "generation_completed": True,
+        "operations_total": 1,
+        "operations_completed": 1,
+        "generated": True,
+        "failures": [],
+        "operations": [status],
+    }
+
+
+def _cam_post_process(p: dict) -> dict:
+    setup = p.get("setup_name", "Setup1")
+    post = p.get("post_processor", "fanuc")
+    return {
+        "setup_name": setup,
+        "post_processor": post,
+        "output_file": f"~/Desktop/{setup}.nc",
+        "output_units": p.get("output_units", "mm"),
+    }
+
+
+def _cam_list_setups(_p: dict) -> dict:
+    return {
+        "setups": [
+            {
+                "name": "Setup1",
+                "operation_type": "milling",
+                "operation_count": 2,
+            },
+        ],
+    }
+
+
+def _cam_list_operations(p: dict) -> dict:
+    return {
+        "setup_name": p.get("setup_name", "Setup1"),
+        "operations": [
+            {
+                "name": "Face1",
+                "strategy": "face",
+                "has_toolpath": True,
+            },
+            {
+                "name": "2D Contour1",
+                "strategy": "2d_contour",
+                "has_toolpath": False,
+            },
+        ],
+    }
+
+
+def _cam_get_operation_info(p: dict) -> dict:
+    return {
+        "setup_name": p.get("setup_name", "Setup1"),
+        "operation_name": p.get("operation_name", "Face1"),
+        "strategy": "face",
+        "tool_diameter": 0.6,
+        "stepdown": 0.1,
+        "feed_rate": 100.0,
+        "spindle_speed": 10000,
+        "has_toolpath": True,
+        "toolpath_valid": True,
+    }
+
+
+MOCKS: dict[str, Callable[[dict], dict]] = {
+    "cam_create_setup": _cam_create_setup,
+    "cam_list_strategies": _cam_list_strategies,
+    "cam_create_operation": _cam_create_operation,
+    "cam_generate_toolpath": _cam_generate_toolpath,
+    "cam_post_process": _cam_post_process,
+    "cam_list_setups": _cam_list_setups,
+    "cam_list_operations": _cam_list_operations,
+    "cam_get_operation_info": _cam_get_operation_info,
+}

@@ -1,6 +1,8 @@
 """Assembly toolset: components, joints and rigid groups.
 """
 
+from collections.abc import Callable
+
 TOOLSET = "assembly"
 SUMMARY = "Components, joints, as-built joints, rigid groups"
 
@@ -104,3 +106,46 @@ TOOLS: list[dict] = [
         },
     },
 ]
+
+
+# ── mocks (--mode mock) ────────────────────────────────────────────────────
+
+
+def _create_component(p: dict) -> dict:
+    return {
+        "component_name": p.get("name", "Component1"),
+        "parent": p.get("parent_name", "RootComponent"),
+    }
+
+
+def _add_joint(p: dict) -> dict:
+    return {
+        "component_one": p.get("component_one", "Comp1"),
+        "component_two": p.get("component_two", "Comp2"),
+        "joint_type": p.get("joint_type", "rigid"),
+        "joint_name": "Joint_mock",
+    }
+
+
+def _create_as_built_joint(p: dict) -> dict:
+    return {
+        "component_one": p.get("component_one", "Comp1"),
+        "component_two": p.get("component_two", "Comp2"),
+        "joint_type": p.get("joint_type", "rigid"),
+        "joint_name": "AsBuiltJoint_mock",
+    }
+
+
+def _create_rigid_group(p: dict) -> dict:
+    return {
+        "component_names": p.get("component_names", []),
+        "rigid_group_name": "RigidGroup_mock",
+    }
+
+
+MOCKS: dict[str, Callable[[dict], dict]] = {
+    "create_component": _create_component,
+    "add_joint": _add_joint,
+    "create_as_built_joint": _create_as_built_joint,
+    "create_rigid_group": _create_rigid_group,
+}

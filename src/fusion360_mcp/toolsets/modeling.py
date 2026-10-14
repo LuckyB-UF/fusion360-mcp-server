@@ -5,6 +5,8 @@ fillet, chamfer, shell, mirror, holes and patterns; boolean, move and
 rename.  All lengths are centimetres (Fusion's internal unit).
 """
 
+from collections.abc import Callable
+
 from ._flags import IDEMPOTENT
 
 TOOLSET = "modeling"
@@ -633,3 +635,226 @@ TOOLS: list[dict] = [
         "annotations": IDEMPOTENT,
     },
 ]
+
+
+# ── mocks (--mode mock) ────────────────────────────────────────────────────
+
+
+def _create_sketch(p: dict) -> dict:
+    plane = p.get("plane", "xy")
+    return {"sketch_name": f"Sketch_mock_{plane}", "plane": plane}
+
+
+def _draw_rectangle(p: dict) -> dict:
+    return {
+        "sketch_name": "Sketch_mock_xy",
+        "width": p.get("width", 1),
+        "height": p.get("height", 1),
+    }
+
+
+def _draw_circle(p: dict) -> dict:
+    return {"sketch_name": "Sketch_mock_xy", "radius": p.get("radius", 1)}
+
+
+def _draw_line(p: dict) -> dict:
+    return {
+        "sketch_name": "Sketch_mock_xy",
+        "start": [p.get("start_x", 0), p.get("start_y", 0)],
+        "end": [p.get("end_x", 1), p.get("end_y", 1)],
+    }
+
+
+def _draw_arc(p: dict) -> dict:
+    return {
+        "sketch_name": "Sketch_mock_xy",
+        "center": [p.get("center_x", 0), p.get("center_y", 0)],
+        "sweep_angle": p.get("sweep_angle", 90),
+    }
+
+
+def _draw_spline(p: dict) -> dict:
+    return {
+        "sketch_name": "Sketch_mock_xy",
+        "spline_type": p.get("spline_type", "fit_points"),
+        "point_count": len(p.get("points", [])),
+    }
+
+
+def _create_polygon(p: dict) -> dict:
+    return {
+        "sketch_name": "Sketch_mock_xy",
+        "sides": p.get("sides", 6),
+        "radius": p.get("radius", 1),
+    }
+
+
+def _add_constraint(p: dict) -> dict:
+    return {
+        "constraint_type": p.get("constraint_type", "coincident"),
+        "entity_one": p.get("entity_one", 0),
+        "entity_two": p.get("entity_two", 1),
+        "sketch_name": p.get("sketch_name", "Sketch1"),
+    }
+
+
+def _add_dimension(p: dict) -> dict:
+    return {
+        "dimension_type": p.get("dimension_type", "distance"),
+        "value": p.get("value", 1.0),
+        "entity_one": p.get("entity_one", 0),
+        "sketch_name": p.get("sketch_name", "Sketch1"),
+    }
+
+
+def _offset_curve(p: dict) -> dict:
+    return {
+        "sketch_name": p.get("sketch_name", "Sketch1"),
+        "offset_distance": p.get("offset_distance", 0.5),
+        "new_curve_count": 4,
+    }
+
+
+def _trim_curve(p: dict) -> dict:
+    return {
+        "sketch_name": p.get("sketch_name", "Sketch1"),
+        "curve_index": p.get("curve_index", 0),
+        "trimmed": True,
+    }
+
+
+def _extend_curve(p: dict) -> dict:
+    return {
+        "sketch_name": p.get("sketch_name", "Sketch1"),
+        "curve_index": p.get("curve_index", 0),
+        "extended": True,
+    }
+
+
+def _project_geometry(p: dict) -> dict:
+    return {
+        "source_name": p.get("source_name", "Body1"),
+        "sketch_name": p.get("sketch_name", "Sketch1"),
+        "projected_curves": 4,
+    }
+
+
+def _extrude(p: dict) -> dict:
+    return {
+        "body_name": "Body_mock",
+        "height": p.get("height", 1),
+        "operation": p.get("operation", "new_body"),
+    }
+
+
+def _revolve(p: dict) -> dict:
+    return {
+        "body_name": "Body_mock_revolve",
+        "angle": p.get("angle", 360),
+        "operation": p.get("operation", "new_body"),
+    }
+
+
+def _fillet(p: dict) -> dict:
+    return {"body_name": p.get("body_name", "Body1"), "radius": p.get("radius", 0.1)}
+
+
+def _chamfer(p: dict) -> dict:
+    return {
+        "body_name": p.get("body_name", "Body1"),
+        "distance": p.get("distance", 0.1),
+    }
+
+
+def _shell(p: dict) -> dict:
+    return {
+        "body_name": p.get("body_name", "Body1"),
+        "thickness": p.get("thickness", 0.1),
+    }
+
+
+def _mirror(p: dict) -> dict:
+    return {
+        "body_name": p.get("body_name", "Body1"),
+        "mirror_plane": p.get("mirror_plane", "yz"),
+        "new_body_name": "Body1_mirrored",
+    }
+
+
+def _create_hole(p: dict) -> dict:
+    return {
+        "body_name": p.get("body_name", "Body1"),
+        "diameter": p.get("diameter", 0.5),
+        "depth": p.get("depth", 1),
+    }
+
+
+def _rectangular_pattern(p: dict) -> dict:
+    return {
+        "body_name": p.get("body_name", "Body1"),
+        "x_count": p.get("x_count", 1),
+        "y_count": p.get("y_count", 1),
+        "created_bodies": p.get("x_count", 1) * p.get("y_count", 1),
+    }
+
+
+def _circular_pattern(p: dict) -> dict:
+    return {
+        "body_name": p.get("body_name", "Body1"),
+        "count": p.get("count", 3),
+        "axis": p.get("axis", "z"),
+        "total_angle": p.get("total_angle", 360),
+    }
+
+
+def _boolean_operation(p: dict) -> dict:
+    return {
+        "target_body": p.get("target_body", "Body1"),
+        "tool_body": p.get("tool_body", "Body2"),
+        "operation": p.get("operation", "join"),
+        "result_body": p.get("target_body", "Body1"),
+    }
+
+
+def _move_body(p: dict) -> dict:
+    return {
+        "body_name": p.get("body_name", "Body1"),
+        "translation": [p.get("x", 0), p.get("y", 0), p.get("z", 0)],
+    }
+
+
+def _rename_body(p: dict) -> dict:
+    return {
+        "renamed": True,
+        "old_name": p.get("body_name", "Body1"),
+        "new_name": p.get("new_name", "RenamedBody"),
+    }
+
+
+MOCKS: dict[str, Callable[[dict], dict]] = {
+    "create_sketch": _create_sketch,
+    "draw_rectangle": _draw_rectangle,
+    "draw_circle": _draw_circle,
+    "draw_line": _draw_line,
+    "draw_arc": _draw_arc,
+    "draw_spline": _draw_spline,
+    "create_polygon": _create_polygon,
+    "add_constraint": _add_constraint,
+    "add_dimension": _add_dimension,
+    "offset_curve": _offset_curve,
+    "trim_curve": _trim_curve,
+    "extend_curve": _extend_curve,
+    "project_geometry": _project_geometry,
+    "extrude": _extrude,
+    "revolve": _revolve,
+    "fillet": _fillet,
+    "chamfer": _chamfer,
+    "shell": _shell,
+    "mirror": _mirror,
+    "create_hole": _create_hole,
+    "rectangular_pattern": _rectangular_pattern,
+    "circular_pattern": _circular_pattern,
+    "boolean_operation": _boolean_operation,
+    "move_body": _move_body,
+    "rename_body": _rename_body,
+}
