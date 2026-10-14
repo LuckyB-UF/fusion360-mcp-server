@@ -85,6 +85,19 @@ def _known(doc, docs: list) -> bool:
     return any(_safe(lambda: doc == d, False) for d in docs)
 
 
+def _package(obj):
+    """obj.package, or None for a supply symbol or frame with no footprint.
+
+    Fusion still returns a Package for those, valid and non-None, but reading
+    anything but its id (0) hangs or crashes Fusion (seen live on a GND
+    symbol of an imported design).
+    """
+    pkg = _g(obj, "package") if obj is not None else None
+    if pkg is None or _safe(lambda: pkg.id, 0) == 0:
+        return None
+    return pkg
+
+
 def _g(obj, *names, default=None):
     """First readable attribute of *obj* among *names*."""
     for n in names:
@@ -512,7 +525,7 @@ class EcadHandler:
         out = []
         for p in _items(self._sch().parts):
             dev = _g(p, "device")
-            pkg = _g(dev, "package") if dev is not None else None
+            pkg = _package(dev)
             lib = _g(dev, "library") if dev is not None else None
             gates = []
             for inst in _items(_g(p, "instances")):
@@ -590,7 +603,7 @@ class EcadHandler:
             x, y = _mm(_g(e, "x", default=0)), _mm(_g(e, "y", default=0))
             ang = _angle(_g(e, "angle", default=0))
             mir = bool(_g(e, "mirror", default=False))
-            pkg = _g(e, "package")
+            pkg = _package(e)
             bbox = None
             area = _g(pkg, "area") if pkg is not None else None
             if area is not None:
