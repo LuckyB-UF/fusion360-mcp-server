@@ -1,20 +1,19 @@
 """Advanced modeling toolset: the less common modeling tools.
 
 Sweep and loft, threads, draft/split/offset/scale, suppress, direct
-primitives, construction geometry, user parameters, appearance, the
-per-format exports and ``delete_all``.  Kept out of the default listing
-so a new agent starts with fewer tools.  Lengths are centimetres.
+primitives, construction geometry, appearance, the per-format exports and
+``delete_all``.  Kept out of the default listing so a new agent starts with
+fewer tools.  Lengths are centimetres.
 """
 
 from collections.abc import Callable
 
-from ._flags import DESTRUCTIVE, IDEMPOTENT, READ_ONLY
+from ._flags import DESTRUCTIVE, IDEMPOTENT
 
 TOOLSET = "modeling_advanced"
 SUMMARY = (
     "Sweep/loft, threads, draft/split/offset/scale, suppress, primitives, "
-    "construction geometry, parameters, appearance, per-format exports, "
-    "delete_all"
+    "construction geometry, appearance, per-format exports, delete_all"
 )
 
 TOOLS: list[dict] = [
@@ -587,62 +586,6 @@ TOOLS: list[dict] = [
             },
         },
     },
-    # ── parameters ────────────────────────────────────────────────────────
-    {
-        "name": "get_parameters",
-        "title": "Get Parameters",
-        "description": "List all user parameters in the design",
-        "inputSchema": {
-            "type": "object",
-            "properties": {},
-        },
-        "annotations": READ_ONLY,
-    },
-    {
-        "name": "create_parameter",
-        "title": "Create Parameter",
-        "description": "Create a new user parameter",
-        "inputSchema": {
-            "type": "object",
-            "required": ["name", "value", "unit"],
-            "properties": {
-                "name": {"type": "string", "description": "Parameter name"},
-                "value": {"type": "number", "description": "Numeric value"},
-                "unit": {
-                    "type": "string",
-                    "description": "Unit expression (e.g. 'mm', 'cm', 'in', 'deg')",
-                },
-                "comment": {"type": "string", "description": "Optional comment"},
-            },
-        },
-    },
-    {
-        "name": "set_parameter",
-        "title": "Set Parameter",
-        "description": "Update the value of an existing user parameter",
-        "inputSchema": {
-            "type": "object",
-            "required": ["name", "value"],
-            "properties": {
-                "name": {"type": "string", "description": "Parameter name"},
-                "value": {"type": "number", "description": "New numeric value"},
-            },
-        },
-        "annotations": IDEMPOTENT,
-    },
-    {
-        "name": "delete_parameter",
-        "title": "Delete Parameter",
-        "description": "Remove a user parameter",
-        "inputSchema": {
-            "type": "object",
-            "required": ["name"],
-            "properties": {
-                "name": {"type": "string", "description": "Parameter name"},
-            },
-        },
-        "annotations": DESTRUCTIVE,
-    },
     # ── appearance / material ─────────────────────────────────────────────
     {
         "name": "set_appearance",
@@ -948,32 +891,6 @@ def _create_construction_axis(p: dict) -> dict:
     }
 
 
-def _get_parameters(_p: dict) -> dict:
-    return {
-        "parameters": [
-            {"name": "width", "value": 10.0, "unit": "mm", "comment": ""},
-            {"name": "height", "value": 5.0, "unit": "mm", "comment": ""},
-        ],
-    }
-
-
-def _create_parameter(p: dict) -> dict:
-    return {
-        "name": p.get("name", "param1"),
-        "value": p.get("value", 0),
-        "unit": p.get("unit", "mm"),
-        "comment": p.get("comment", ""),
-    }
-
-
-def _set_parameter(p: dict) -> dict:
-    return {"name": p.get("name", "param1"), "value": p.get("value", 0)}
-
-
-def _delete_parameter(p: dict) -> dict:
-    return {"name": p.get("name", "param1"), "deleted": True}
-
-
 def _set_appearance(p: dict) -> dict:
     return {
         "target_name": p.get("target_name", "Body1"),
@@ -1035,10 +952,6 @@ MOCKS: dict[str, Callable[[dict], dict]] = {
     "create_torus": _create_torus,
     "create_construction_plane": _create_construction_plane,
     "create_construction_axis": _create_construction_axis,
-    "get_parameters": _get_parameters,
-    "create_parameter": _create_parameter,
-    "set_parameter": _set_parameter,
-    "delete_parameter": _delete_parameter,
     "set_appearance": _set_appearance,
     "export_stl": _export_stl,
     "export_step": _export_step,

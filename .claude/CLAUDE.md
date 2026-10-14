@@ -38,20 +38,22 @@ uv run ruff check  # lint
 
 ## Toolsets
 
-Every tool belongs to exactly one toolset (the module it is defined in). Only enabled toolsets are listed. Default: `core,modeling,inspection` (43 tools). Change it with `--toolsets` (comma list or `all`) or `FUSION_MCP_TOOLSETS`; agents switch at runtime with `fusion_toolsets`, which sends `notifications/tools/list_changed`. `core` is always on.
+Every tool belongs to exactly one toolset (the module it is defined in). Only enabled toolsets are listed. Default: `core,modeling,inspection` (47 tools). Change it with `--toolsets` (comma list or `all`) or `FUSION_MCP_TOOLSETS`; agents switch at runtime with `fusion_toolsets`, which sends `notifications/tools/list_changed`. `core` is always on.
+
+Clients that run unattended (scripts, other projects' agents) should set `FUSION_MCP_TOOLSETS` to the toolsets they need instead of relying on enabling them at runtime.
 
 | Toolset | Tools | Contents |
 |---|---:|---|
 | `core` | 12 | ping, get_scene_info, get_object_info, list_components, get/set_design_type, undo, execute_code, render_view, export, import_mesh, fusion_toolsets |
-| `modeling` | 25 | sketch tools, constraints, dimensions, offset/trim/extend_curve, project_geometry; extrude, revolve, fillet, chamfer, shell, mirror, create_hole, rectangular/circular_pattern; boolean_operation, move_body, rename_body |
+| `modeling` | 29 | sketch tools, constraints, dimensions, offset/trim/extend_curve, project_geometry; extrude, revolve, fillet, chamfer, shell, mirror, create_hole, rectangular/circular_pattern; boolean_operation, move_body, rename_body; get/create/set/delete_parameter |
 | `inspection` | 6 | measure_distance, measure_angle, get_bounding_box, get_physical_properties, create_section_analysis, check_interference |
-| `modeling_advanced` | 27 | sweep, loft, create_thread, draft_faces, split_body, split_face, offset_faces, scale_body, suppress/unsuppress_feature, create_box/_parametric/cylinder/sphere/torus, construction plane/axis, get/create/set/delete_parameter, set_appearance, export_stl/step/f3d/view_sheet, delete_all |
+| `modeling_advanced` | 23 | sweep, loft, create_thread, draft_faces, split_body, split_face, offset_faces, scale_body, suppress/unsuppress_feature, create_box/_parametric/cylinder/sphere/torus, construction plane/axis, set_appearance, export_stl/step/f3d/view_sheet, delete_all |
 | `assembly` | 4 | create_component, add_joint, create_as_built_joint, create_rigid_group |
 | `surface_sheetmetal` | 9 | patch/stitch/thicken/ruled/trim surface, create_flange, create_bend, flat_pattern, unfold |
 | `cam` | 8 | cam_* |
 | `electronics` | 38 | ecad_* |
 
-`modeling_advanced` exists so the default list stays at 45 tools or fewer: putting all modeling tools in `modeling` would give 70. Tests hold the default at ≤ 45 and `core` at ≤ 12.
+`modeling_advanced` exists so the default list stays at 50 tools or fewer: putting all modeling tools in `modeling` would give 70. The parameter tools stay in `modeling` because parametric work and zerrk2.0's verifier/flex checks rely on them. Tests hold the default at ≤ 50 and `core` at ≤ 12.
 
 ## Adding a new command
 

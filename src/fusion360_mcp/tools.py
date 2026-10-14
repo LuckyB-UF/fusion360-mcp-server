@@ -62,8 +62,8 @@ SERVER_TOOLS: list[dict] = [
             "are enabled, or turn toolsets on/off. Only tools of enabled "
             "toolsets are listed; core is always on. Not listed by default: "
             "modeling_advanced (sweep/loft, threads, primitives, construction "
-            "geometry, parameters, appearance, per-format exports, "
-            "delete_all), assembly, surface_sheetmetal, cam, electronics."
+            "geometry, appearance, per-format exports, delete_all), assembly, "
+            "surface_sheetmetal, cam, electronics."
         ),
         "inputSchema": {
             "type": "object",

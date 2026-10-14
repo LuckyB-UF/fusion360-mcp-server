@@ -2,17 +2,18 @@
 
 Sketches, constraints, dimensions and curve edits; extrude, revolve,
 fillet, chamfer, shell, mirror, holes and patterns; boolean, move and
-rename.  All lengths are centimetres (Fusion's internal unit).
+rename; user parameters.  All lengths are centimetres (Fusion's internal unit).
 """
 
 from collections.abc import Callable
 
-from ._flags import IDEMPOTENT
+from ._flags import DESTRUCTIVE, IDEMPOTENT, READ_ONLY
 
 TOOLSET = "modeling"
 SUMMARY = (
     "Sketches, constraints, curve edits; extrude, revolve, fillet, "
-    "chamfer, shell, mirror, holes, patterns; boolean, move, rename"
+    "chamfer, shell, mirror, holes, patterns; boolean, move, rename; "
+    "user parameters"
 )
 
 TOOLS: list[dict] = [
@@ -634,6 +635,62 @@ TOOLS: list[dict] = [
         },
         "annotations": IDEMPOTENT,
     },
+    # ── parameters ────────────────────────────────────────────────────────
+    {
+        "name": "get_parameters",
+        "title": "Get Parameters",
+        "description": "List all user parameters in the design",
+        "inputSchema": {
+            "type": "object",
+            "properties": {},
+        },
+        "annotations": READ_ONLY,
+    },
+    {
+        "name": "create_parameter",
+        "title": "Create Parameter",
+        "description": "Create a new user parameter",
+        "inputSchema": {
+            "type": "object",
+            "required": ["name", "value", "unit"],
+            "properties": {
+                "name": {"type": "string", "description": "Parameter name"},
+                "value": {"type": "number", "description": "Numeric value"},
+                "unit": {
+                    "type": "string",
+                    "description": "Unit expression (e.g. 'mm', 'cm', 'in', 'deg')",
+                },
+                "comment": {"type": "string", "description": "Optional comment"},
+            },
+        },
+    },
+    {
+        "name": "set_parameter",
+        "title": "Set Parameter",
+        "description": "Update the value of an existing user parameter",
+        "inputSchema": {
+            "type": "object",
+            "required": ["name", "value"],
+            "properties": {
+                "name": {"type": "string", "description": "Parameter name"},
+                "value": {"type": "number", "description": "New numeric value"},
+            },
+        },
+        "annotations": IDEMPOTENT,
+    },
+    {
+        "name": "delete_parameter",
+        "title": "Delete Parameter",
+        "description": "Remove a user parameter",
+        "inputSchema": {
+            "type": "object",
+            "required": ["name"],
+            "properties": {
+                "name": {"type": "string", "description": "Parameter name"},
+            },
+        },
+        "annotations": DESTRUCTIVE,
+    },
 ]
 
 
@@ -831,6 +888,32 @@ def _rename_body(p: dict) -> dict:
     }
 
 
+def _get_parameters(_p: dict) -> dict:
+    return {
+        "parameters": [
+            {"name": "width", "value": 10.0, "unit": "mm", "comment": ""},
+            {"name": "height", "value": 5.0, "unit": "mm", "comment": ""},
+        ],
+    }
+
+
+def _create_parameter(p: dict) -> dict:
+    return {
+        "name": p.get("name", "param1"),
+        "value": p.get("value", 0),
+        "unit": p.get("unit", "mm"),
+        "comment": p.get("comment", ""),
+    }
+
+
+def _set_parameter(p: dict) -> dict:
+    return {"name": p.get("name", "param1"), "value": p.get("value", 0)}
+
+
+def _delete_parameter(p: dict) -> dict:
+    return {"name": p.get("name", "param1"), "deleted": True}
+
+
 MOCKS: dict[str, Callable[[dict], dict]] = {
     "create_sketch": _create_sketch,
     "draw_rectangle": _draw_rectangle,
@@ -857,4 +940,8 @@ MOCKS: dict[str, Callable[[dict], dict]] = {
     "boolean_operation": _boolean_operation,
     "move_body": _move_body,
     "rename_body": _rename_body,
+    "get_parameters": _get_parameters,
+    "create_parameter": _create_parameter,
+    "set_parameter": _set_parameter,
+    "delete_parameter": _delete_parameter,
 }

@@ -123,14 +123,14 @@ Call the `ping` tool from your client. If it returns `{"pong": true}`, everythin
 
 ## Toolsets
 
-The server has 128 Fusion tools plus `fusion_toolsets`. Listing them all costs about 20k tokens of schema, so they are grouped into **toolsets** and only the enabled ones are listed. The default is `core,modeling,inspection`: 43 tools, about 6k tokens.
+The server has 128 Fusion tools plus `fusion_toolsets`. Listing them all costs about 20k tokens of schema, so they are grouped into **toolsets** and only the enabled ones are listed. The default is `core,modeling,inspection`: 47 tools, about 6.4k tokens.
 
 | Toolset | Tools | Default | What's in it |
 |---------|------:|:-------:|--------------|
 | `core` | 12 | always | `ping`, `get_scene_info`, `get_object_info`, `list_components`, `get_design_type`, `set_design_type`, `undo`, `execute_code`, `render_view`, `export`, `import_mesh`, `fusion_toolsets` |
-| `modeling` | 25 | yes | Sketches, constraints, dimensions, curve edits, `project_geometry`; `extrude`, `revolve`, `fillet`, `chamfer`, `shell`, `mirror`, `create_hole`, patterns; `boolean_operation`, `move_body`, `rename_body` |
+| `modeling` | 29 | yes | Sketches, constraints, dimensions, curve edits, `project_geometry`; `extrude`, `revolve`, `fillet`, `chamfer`, `shell`, `mirror`, `create_hole`, patterns; `boolean_operation`, `move_body`, `rename_body`; user parameters (`get_parameters`, `create_parameter`, `set_parameter`, `delete_parameter`) |
 | `inspection` | 6 | yes | `measure_distance`, `measure_angle`, `get_bounding_box`, `get_physical_properties`, `create_section_analysis`, `check_interference` |
-| `modeling_advanced` | 27 | no | `sweep`, `loft`, threads, draft/split/offset/scale, suppress/unsuppress, direct primitives, construction geometry, user parameters, `set_appearance`, `export_stl`/`export_step`/`export_f3d`/`export_view_sheet`, `delete_all` |
+| `modeling_advanced` | 23 | no | `sweep`, `loft`, threads, draft/split/offset/scale, suppress/unsuppress, direct primitives, construction geometry, `set_appearance`, `export_stl`/`export_step`/`export_f3d`/`export_view_sheet`, `delete_all` |
 | `assembly` | 4 | no | `create_component`, `add_joint`, `create_as_built_joint`, `create_rigid_group` |
 | `surface_sheetmetal` | 9 | no | Surface patch/stitch/thicken/ruled/trim; sheet-metal flange/bend/flat pattern/unfold |
 | `cam` | 8 | no | `cam_*` setups, operations, toolpaths, post-processing |

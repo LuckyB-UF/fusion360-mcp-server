@@ -67,7 +67,7 @@ def test_default_listing_is_core_modeling_inspection():
     assert DEFAULT_TOOLSETS == ("core", "modeling", "inspection")
     tools = ToolsetState(set(DEFAULT_TOOLSETS)).tools()
     assert {TOOLSET_OF[t.name] for t in tools} == set(DEFAULT_TOOLSETS)
-    assert len(tools) <= 45
+    assert len(tools) <= 50
 
 
 def test_all_lists_every_tool():

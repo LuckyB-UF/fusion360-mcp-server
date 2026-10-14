@@ -18,7 +18,7 @@ The add-in uses a CustomEvent + work queue pattern to safely dispatch all Fusion
 
 ## Toolsets: not every tool is listed
 
-Tools are grouped into toolsets, and only enabled ones are listed. The default is `core,modeling,inspection` (43 tools). If a tool you need isn't in your list, it's in a disabled toolset:
+Tools are grouped into toolsets, and only enabled ones are listed. The default is `core,modeling,inspection` (47 tools). If a tool you need isn't in your list, it's in a disabled toolset:
 
 - Call `fusion_toolsets` with no arguments to see every toolset, its tool count and whether it's on.
 - Call `fusion_toolsets {"enable": ["cam"]}` to turn one on. `["all"]` turns on everything; `"disable"` turns toolsets off. `core` is always on.
@@ -27,9 +27,9 @@ Tools are grouped into toolsets, and only enabled ones are listed. The default i
 | Toolset | Default | Contents |
 |---------|:-------:|----------|
 | `core` | always | ping, scene/object info, list_components, design type, undo, execute_code, render_view, export, import_mesh, fusion_toolsets |
-| `modeling` | yes | sketch tools, constraints, dimensions, curve edits, project_geometry; extrude, revolve, fillet, chamfer, shell, mirror, create_hole, patterns; boolean_operation, move_body, rename_body |
+| `modeling` | yes | sketch tools, constraints, dimensions, curve edits, project_geometry; extrude, revolve, fillet, chamfer, shell, mirror, create_hole, patterns; boolean_operation, move_body, rename_body; get/create/set/delete_parameter |
 | `inspection` | yes | measure_distance, measure_angle, get_bounding_box, get_physical_properties, create_section_analysis, check_interference |
-| `modeling_advanced` | no | sweep, loft, create_thread, draft/split/offset/scale, suppress/unsuppress, direct primitives, construction plane/axis, user parameters, set_appearance, export_stl/step/f3d/view_sheet, delete_all |
+| `modeling_advanced` | no | sweep, loft, create_thread, draft/split/offset/scale, suppress/unsuppress, direct primitives, construction plane/axis, set_appearance, export_stl/step/f3d/view_sheet, delete_all |
 | `assembly` | no | create_component, add_joint, create_as_built_joint, create_rigid_group |
 | `surface_sheetmetal` | no | surface and sheet-metal tools |
 | `cam` | no | cam_* |
