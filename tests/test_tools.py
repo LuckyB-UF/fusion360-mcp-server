@@ -1,7 +1,7 @@
 """Tests for the tool registry."""
 
 from fusion360_mcp.tools import TOOLS, get_tool_by_name, get_tool_list
-from fusion360_mcp.tools_ecad import ECAD_TOOLS
+from fusion360_mcp.toolsets.electronics import TOOLS as ECAD_TOOLS
 
 
 def test_all_tools_have_required_keys():

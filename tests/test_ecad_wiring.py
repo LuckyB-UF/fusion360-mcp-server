@@ -7,7 +7,7 @@ from pathlib import Path
 
 from fusion360_mcp.hints import classify
 from fusion360_mcp.mock import _DISPATCH, mock_command
-from fusion360_mcp.tools_ecad import ECAD_TOOLS
+from fusion360_mcp.toolsets.electronics import TOOLS as ECAD_TOOLS
 
 _ECAD = Path(__file__).resolve().parent.parent / "addon" / "server" / "ecad.py"
 

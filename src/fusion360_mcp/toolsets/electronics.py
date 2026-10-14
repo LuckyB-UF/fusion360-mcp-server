@@ -14,6 +14,14 @@ out and finish the board with the editing tools.
 All lengths are millimetres.  Coordinates are sheet or board coordinates.
 """
 
+from ._flags import DESTRUCTIVE, IDEMPOTENT, READ_ONLY
+
+TOOLSET = "electronics"
+SUMMARY = (
+    "Fusion Electronics schematic + PCB (ecad_*): build, edit, check, "
+    "export; lengths in mm"
+)
+
 _XY = {"type": "number", "description": "mm"}
 
 _POINTS = {
@@ -38,7 +46,7 @@ _LAYER = {
 
 _PATH = {"type": "string", "description": "Output file path on the Fusion PC"}
 
-ECAD_TOOLS: list[dict] = [
+TOOLS: list[dict] = [
     # ── design / session ─────────────────────────────────────────────
     {
         "name": "ecad_new_design",
@@ -79,6 +87,7 @@ ECAD_TOOLS: list[dict] = [
                 },
             },
         },
+        "annotations": IDEMPOTENT,
     },
     {
         "name": "ecad_save_design",
@@ -111,6 +120,7 @@ ECAD_TOOLS: list[dict] = [
             "classes, libraries, grid, and whether DRC/ERC have been run."
         ),
         "inputSchema": {"type": "object", "properties": {}},
+        "annotations": READ_ONLY,
     },
     # ── read ─────────────────────────────────────────────────────────
     {
@@ -134,6 +144,7 @@ ECAD_TOOLS: list[dict] = [
                 },
             },
         },
+        "annotations": READ_ONLY,
     },
     {
         "name": "ecad_list_nets",
@@ -150,6 +161,7 @@ ECAD_TOOLS: list[dict] = [
                 },
             },
         },
+        "annotations": READ_ONLY,
     },
     {
         "name": "ecad_list_elements",
@@ -164,6 +176,7 @@ ECAD_TOOLS: list[dict] = [
                 "filter": {"type": "string", "description": "Regex on element name"},
             },
         },
+        "annotations": READ_ONLY,
     },
     {
         "name": "ecad_list_signals",
@@ -179,6 +192,7 @@ ECAD_TOOLS: list[dict] = [
                 "unrouted_only": {"type": "boolean", "default": False},
             },
         },
+        "annotations": READ_ONLY,
     },
     {
         "name": "ecad_search_library",
@@ -208,6 +222,7 @@ ECAD_TOOLS: list[dict] = [
                 "limit": {"type": "integer", "default": 40, "minimum": 1},
             },
         },
+        "annotations": READ_ONLY,
     },
     {
         "name": "ecad_build_design",
@@ -346,6 +361,7 @@ ECAD_TOOLS: list[dict] = [
                 "monochrome": {"type": "boolean", "default": False},
             },
         },
+        "annotations": READ_ONLY,
     },
     # ── checks ───────────────────────────────────────────────────────
     {
@@ -353,6 +369,7 @@ ECAD_TOOLS: list[dict] = [
         "title": "Run ERC",
         "description": "Electrical rules check on the schematic; errors grouped.",
         "inputSchema": {"type": "object", "properties": {}},
+        "annotations": IDEMPOTENT,
     },
     {
         "name": "ecad_run_drc",
@@ -370,6 +387,7 @@ ECAD_TOOLS: list[dict] = [
                 },
             },
         },
+        "annotations": IDEMPOTENT,
     },
     {
         "name": "ecad_review",
@@ -453,6 +471,7 @@ ECAD_TOOLS: list[dict] = [
                 },
             },
         },
+        "annotations": IDEMPOTENT,
     },
     {
         "name": "ecad_connect",
@@ -529,6 +548,7 @@ ECAD_TOOLS: list[dict] = [
                 },
             },
         },
+        "annotations": IDEMPOTENT,
     },
     {
         "name": "ecad_route",
@@ -694,12 +714,14 @@ ECAD_TOOLS: list[dict] = [
                 },
             },
         },
+        "annotations": DESTRUCTIVE,
     },
     {
         "name": "ecad_ratsnest",
         "title": "Ratsnest / Repour",
         "description": "Recalculate airwires and repour all copper polygons.",
         "inputSchema": {"type": "object", "properties": {}},
+        "annotations": IDEMPOTENT,
     },
     # ── raw access ───────────────────────────────────────────────────
     {
@@ -725,6 +747,7 @@ ECAD_TOOLS: list[dict] = [
                 "editor": {"type": "string", "enum": ["schematic", "board"]},
             },
         },
+        "annotations": DESTRUCTIVE,
     },
     {
         "name": "ecad_run_ulp",
@@ -764,6 +787,7 @@ ECAD_TOOLS: list[dict] = [
                 },
             },
         },
+        "annotations": READ_ONLY,
     },
     {
         "name": "ecad_export_pick_place",
@@ -780,12 +804,14 @@ ECAD_TOOLS: list[dict] = [
                 "include_tht": {"type": "boolean", "default": False},
             },
         },
+        "annotations": READ_ONLY,
     },
     {
         "name": "ecad_export_netlist",
         "title": "Export Netlist",
         "description": "Netlist as 'NET: PART.PIN ...' text, optionally to a file.",
         "inputSchema": {"type": "object", "properties": {"path": _PATH}},
+        "annotations": READ_ONLY,
     },
     {
         "name": "ecad_export_gerbers",
@@ -807,6 +833,7 @@ ECAD_TOOLS: list[dict] = [
                 "save_first": {"type": "boolean", "default": False},
             },
         },
+        "annotations": IDEMPOTENT,
     },
     {
         "name": "ecad_export_odb",
@@ -821,6 +848,7 @@ ECAD_TOOLS: list[dict] = [
                 "save_first": {"type": "boolean", "default": False},
             },
         },
+        "annotations": IDEMPOTENT,
     },
     {
         "name": "ecad_export_eagle",
@@ -837,6 +865,7 @@ ECAD_TOOLS: list[dict] = [
                 "path": _PATH,
             },
         },
+        "annotations": IDEMPOTENT,
     },
     # ── engineering ──────────────────────────────────────────────────
     {
@@ -875,33 +904,6 @@ ECAD_TOOLS: list[dict] = [
                 "params": {"type": "object", "default": {}},
             },
         },
+        "annotations": READ_ONLY,
     },
 ]
-
-ECAD_READ_ONLY = {
-    "ecad_get_design",
-    "ecad_list_parts",
-    "ecad_list_nets",
-    "ecad_list_elements",
-    "ecad_list_signals",
-    "ecad_search_library",
-    "ecad_render",
-    "ecad_calculate",
-    "ecad_export_bom",
-    "ecad_export_pick_place",
-    "ecad_export_netlist",
-}
-
-ECAD_DESTRUCTIVE = {"ecad_ripup", "ecad_command"}
-
-ECAD_IDEMPOTENT = ECAD_READ_ONLY | {
-    "ecad_open_editor",
-    "ecad_set_part",
-    "ecad_run_erc",
-    "ecad_run_drc",
-    "ecad_ratsnest",
-    "ecad_place",
-    "ecad_export_gerbers",
-    "ecad_export_odb",
-    "ecad_export_eagle",
-}
