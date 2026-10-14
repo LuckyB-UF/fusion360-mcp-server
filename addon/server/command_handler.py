@@ -20,6 +20,7 @@ import adsk.cam
 import adsk.core
 import adsk.fusion
 
+from . import documents as _docs
 from . import get_logger
 from . import hints as _hints
 from .ecad import EcadHandler
@@ -213,6 +214,10 @@ class CommandHandler:
                 "cam_post_process": self.cam_post_process,
                 # health
                 "ping": self.ping,
+                # open documents (documents.py)
+                "docs_list": self.docs_list,
+                "docs_activate": self.docs_activate,
+                "docs_open": self.docs_open,
                 # design type safety
                 "get_design_type": self.get_design_type,
                 "set_design_type": self.set_design_type,
@@ -3154,6 +3159,31 @@ class CommandHandler:
 
     def ping(self):
         return {"pong": True}
+
+    # ------------------------------------------------------------------
+    # Open documents (see documents.py).  None of these read a Design, so
+    # they work while a drawing or electronics document is active.
+    # ------------------------------------------------------------------
+
+    def docs_list(self):
+        active = self.app.activeDocument
+        docs = [_docs.doc_info(d, active) for d in _docs.open_documents(self.app)]
+        return {
+            "fusion_version": self.app.version,
+            "active": _docs.doc_info(active, active) if active else None,
+            "count": len(docs),
+            "documents": docs,
+        }
+
+    def docs_activate(self, name: str):
+        doc = _docs.find_open(self.app, name)
+        doc.activate()
+        return _docs.doc_info(doc, self.app.activeDocument)
+
+    def docs_open(self, file_id: str):
+        data_file = _docs.find_cloud_file(self.app, file_id)
+        doc = self.app.documents.open(data_file, True)
+        return _docs.doc_info(doc, self.app.activeDocument)
 
     # ------------------------------------------------------------------
     # Design type safety

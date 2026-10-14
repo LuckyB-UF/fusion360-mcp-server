@@ -1,17 +1,20 @@
 """Core toolset: always on.
 
-Health, scene queries, design type, undo, ``execute_code``, ``render_view``
-and the unified ``export`` / ``import_mesh``.
+Health, scene queries, design type, undo, ``execute_code``, ``render_view``,
+the unified ``export`` / ``import_mesh``, and the open-document tools
+(``docs_list`` / ``docs_activate`` / ``docs_open``) every toolset uses to
+switch between designs, drawings and electronics documents.
 """
 
 from collections.abc import Callable
 
+from ..hints import classify as _classify
 from ._flags import IDEMPOTENT, READ_ONLY
 
 TOOLSET = "core"
 SUMMARY = (
     "Always on: health, scene info, design type, undo, execute_code, "
-    "render_view, export/import, fusion_toolsets"
+    "render_view, export/import, open documents, fusion_toolsets"
 )
 
 TOOLS: list[dict] = [
@@ -241,6 +244,65 @@ TOOLS: list[dict] = [
             },
         },
     },
+    # ── open documents ────────────────────────────────────────────────────
+    {
+        "name": "docs_list",
+        "title": "List Open Documents",
+        "description": (
+            "List the open documents: name, kind (fusion, drawing, "
+            "electronics or other), whether each is active and saved, and "
+            "its cloud file id (null until saved). Works whatever kind of "
+            "document is active. Use it before docs_activate, and to find "
+            "the design id for drawing_create."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {},
+        },
+        "annotations": READ_ONLY,
+    },
+    {
+        "name": "docs_activate",
+        "title": "Activate Document",
+        "description": (
+            "Make an open document the active one, by name. The name matches "
+            "with or without Fusion's version suffix ('Bracket' finds "
+            "'Bracket v3'). Design tools need a fusion document active, "
+            "drawing tools a drawing, ecad tools an electronics document."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "required": ["name"],
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "description": "Document name, as docs_list shows it",
+                },
+            },
+        },
+        "annotations": IDEMPOTENT,
+    },
+    {
+        "name": "docs_open",
+        "title": "Open Cloud Document",
+        "description": (
+            "Open a cloud file by its file id and make it the active "
+            "document. Opening a large design can take a while."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "required": ["file_id"],
+            "properties": {
+                "file_id": {
+                    "type": "string",
+                    "description": (
+                        "Cloud file id (the file_id from docs_list or "
+                        "drawing_create)"
+                    ),
+                },
+            },
+        },
+    },
 ]
 
 
@@ -348,6 +410,60 @@ def _import_mesh(p: dict) -> dict:
     }
 
 
+_MOCK_DOCS = [
+    {
+        "name": "MockDesign v1",
+        "kind": "fusion",
+        "active": True,
+        "saved": True,
+        "file_id": "urn:adsk.wipprod:dm.lineage:mockdesign",
+    },
+    {
+        "name": "MockDesign Drawing v1",
+        "kind": "drawing",
+        "active": False,
+        "saved": True,
+        "file_id": "urn:adsk.wipprod:dm.lineage:mockdrawing",
+    },
+]
+
+
+def _docs_list(_p: dict) -> dict:
+    return {
+        "fusion_version": "2.0.mock",
+        "active": dict(_MOCK_DOCS[0]),
+        "count": len(_MOCK_DOCS),
+        "documents": [dict(d) for d in _MOCK_DOCS],
+    }
+
+
+def _docs_activate(p: dict) -> dict:
+    name = p.get("name", "MockDesign")
+    for doc in _MOCK_DOCS:
+        if doc["name"] == name or doc["name"].startswith(name + " v"):
+            return {**doc, "active": True}
+    message = f"No open document named {name!r}"
+    kind, hint_list = _classify(message)
+    return {
+        "ok": False,
+        "error_kind": kind,
+        "error_message": message,
+        "hints": hint_list,
+        "traceback": f"MockError: {message}",
+    }
+
+
+def _docs_open(p: dict) -> dict:
+    file_id = p.get("file_id", "urn:adsk.wipprod:dm.lineage:mock")
+    return {
+        "name": "Opened v1",
+        "kind": "fusion",
+        "active": True,
+        "saved": True,
+        "file_id": file_id,
+    }
+
+
 MOCKS: dict[str, Callable[[dict], dict]] = {
     "ping": _ping,
     "get_scene_info": _get_scene_info,
@@ -360,4 +476,7 @@ MOCKS: dict[str, Callable[[dict], dict]] = {
     "render_view": _render_view,
     "export": _export,
     "import_mesh": _import_mesh,
+    "docs_list": _docs_list,
+    "docs_activate": _docs_activate,
+    "docs_open": _docs_open,
 }

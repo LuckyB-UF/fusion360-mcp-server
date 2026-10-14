@@ -60,7 +60,7 @@ def test_electronics_toolset_is_the_ecad_tools():
 
 def test_core_stays_small():
     core = get_tool_list({"core"})
-    assert len(core) <= 12
+    assert len(core) <= 15
 
 
 def test_default_listing_is_core_modeling_inspection():
@@ -72,7 +72,7 @@ def test_default_listing_is_core_modeling_inspection():
 
 def test_all_lists_every_tool():
     tools = ToolsetState(parse_toolsets("all")).tools()
-    assert len(tools) == 128 + 1
+    assert len(tools) == 131 + 1
     assert _names(tools) == {t["name"] for t in TOOLS} | {"fusion_toolsets"}
 
 

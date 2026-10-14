@@ -102,6 +102,7 @@ class TestToolAnnotations:
             "measure_angle",
             "check_interference",
             "ping",
+            "docs_list",
             "cam_list_setups",
             "cam_list_operations",
             "cam_get_operation_info",

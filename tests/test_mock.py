@@ -1027,6 +1027,42 @@ class TestMockRenameBody:
         assert result["new_name"] == "ShellTop"
 
 
+class TestMockDocuments:
+    def test_docs_list_gives_kind_flags_and_file_id(self):
+        result = mock_command("docs_list")
+        assert result["count"] == len(result["documents"])
+        assert {d["kind"] for d in result["documents"]} <= {
+            "fusion", "drawing", "electronics", "other"
+        }
+        for doc in result["documents"]:
+            assert set(doc) == {"name", "kind", "active", "saved", "file_id"}
+        assert [d for d in result["documents"] if d["active"]] == [
+            result["active"]
+        ]
+
+    def test_docs_activate_matches_without_version_suffix(self):
+        result = mock_command("docs_activate", {"name": "MockDesign Drawing"})
+        assert result["ok"] is True
+        assert result["name"] == "MockDesign Drawing v1"
+        assert result["kind"] == "drawing"
+        assert result["active"] is True
+
+    def test_docs_activate_unknown_name_is_classified(self):
+        result = mock_command("docs_activate", {"name": "Nope"})
+        assert result["ok"] is False
+        assert result["error_kind"] == "DOCUMENT_NOT_FOUND"
+        assert any("docs_list" in h for h in result["hints"])
+
+    def test_docs_open_returns_the_opened_document(self):
+        result = mock_command("docs_open", {"file_id": "urn:x"})
+        assert result["file_id"] == "urn:x"
+        assert result["active"] is True
+
+    def test_docs_tools_carry_no_design_deltas(self):
+        for name in ("docs_list", "docs_activate", "docs_open"):
+            assert "deltas" not in mock_command(name, {})
+
+
 class TestMockFallback:
     def test_unknown_command_returns_warning(self):
         result = mock_command("totally_unknown_command", {"x": 1})

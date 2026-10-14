@@ -31,6 +31,7 @@ _LONG_TIMEOUTS = {
     "ecad_open_editor": 75.0,
     "ecad_export_gerbers": 135.0,
     "ecad_export_odb": 135.0,
+    "docs_open": 75.0,
 }
 
 

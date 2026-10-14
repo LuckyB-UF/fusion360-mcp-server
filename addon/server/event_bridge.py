@@ -30,6 +30,7 @@ LONG_COMMANDS = {
     "ecad_open_editor": 60.0,
     "ecad_export_gerbers": 120.0,
     "ecad_export_odb": 120.0,
+    "docs_open": 60.0,            # downloads the file first
 }
 
 # A modal dialog freezes the main thread.  For electronics commands, look

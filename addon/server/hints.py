@@ -15,6 +15,25 @@ import re
 # First match wins. Patterns use re.IGNORECASE.
 _RULES: list[tuple[str, str, list[str]]] = [
     (
+        r"no open document named",
+        "DOCUMENT_NOT_FOUND",
+        [
+            "Call docs_list for the names of the open documents.",
+            "A document that is not open yet can be opened by cloud file id "
+            "with docs_open.",
+        ],
+    ),
+    (
+        r"no cloud file with id",
+        "CLOUD_FILE_NOT_FOUND",
+        [
+            "Check the id: docs_list shows the file_id of every open, saved "
+            "document.",
+            "File ids look like urn:adsk.wipprod:dm.lineage:...; a document "
+            "name is not a file id.",
+        ],
+    ),
+    (
         r"no electronics design is open",
         "NO_ELECTRONICS_DESIGN",
         [

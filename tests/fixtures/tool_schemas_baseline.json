@@ -4714,5 +4714,63 @@
    "destructiveHint": false,
    "idempotentHint": true
   }
+ },
+ "docs_list": {
+  "name": "docs_list",
+  "title": "List Open Documents",
+  "description": "List the open documents: name, kind (fusion, drawing, electronics or other), whether each is active and saved, and its cloud file id (null until saved). Works whatever kind of document is active. Use it before docs_activate, and to find the design id for drawing_create.",
+  "inputSchema": {
+   "type": "object",
+   "properties": {}
+  },
+  "annotations": {
+   "readOnlyHint": true,
+   "destructiveHint": false,
+   "idempotentHint": true
+  }
+ },
+ "docs_activate": {
+  "name": "docs_activate",
+  "title": "Activate Document",
+  "description": "Make an open document the active one, by name. The name matches with or without Fusion's version suffix ('Bracket' finds 'Bracket v3'). Design tools need a fusion document active, drawing tools a drawing, ecad tools an electronics document.",
+  "inputSchema": {
+   "type": "object",
+   "required": [
+    "name"
+   ],
+   "properties": {
+    "name": {
+     "type": "string",
+     "description": "Document name, as docs_list shows it"
+    }
+   }
+  },
+  "annotations": {
+   "readOnlyHint": false,
+   "destructiveHint": false,
+   "idempotentHint": true
+  }
+ },
+ "docs_open": {
+  "name": "docs_open",
+  "title": "Open Cloud Document",
+  "description": "Open a cloud file by its file id and make it the active document. Opening a large design can take a while.",
+  "inputSchema": {
+   "type": "object",
+   "required": [
+    "file_id"
+   ],
+   "properties": {
+    "file_id": {
+     "type": "string",
+     "description": "Cloud file id (the file_id from docs_list or drawing_create)"
+    }
+   }
+  },
+  "annotations": {
+   "readOnlyHint": false,
+   "destructiveHint": false,
+   "idempotentHint": false
+  }
  }
 }
