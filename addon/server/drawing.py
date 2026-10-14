@@ -113,6 +113,14 @@ def _apply_settings(obj, settings: dict | None) -> dict:
     return applied
 
 
+def _describe(doc) -> str:
+    """'a drawing document', 'an electronics document', 'none'."""
+    if doc is None:
+        return "none (no document is open)"
+    kind = _docs.doc_kind(doc)
+    return f"{'an' if kind[0] in 'aeiou' else 'a'} {kind} document"
+
+
 # ----------------------------------------------------------------------
 # handler
 # ----------------------------------------------------------------------
@@ -148,9 +156,8 @@ class DrawingHandler:
         doc = self.app.activeDocument
         ddoc = drawing.DrawingDocument.cast(doc) if doc else None
         if not ddoc:
-            kind = _docs.doc_kind(doc) if doc else "no"
             raise DrawingError(
-                f"The active document is a {kind} document, not a drawing. "
+                f"The active document is {_describe(doc)}, not a drawing. "
                 "Call docs_list, then docs_activate with the drawing's name."
             )
         return ddoc.drawing
@@ -227,10 +234,9 @@ class DrawingHandler:
             design_file = _docs.find_cloud_file(self.app, design_id)
         else:
             doc = self.app.activeDocument
-            kind = _docs.doc_kind(doc) if doc else "no"
-            if kind != "fusion":
+            if _docs.doc_kind(doc) != "fusion":
                 raise DrawingError(
-                    f"The active document is a {kind} document, not a design. "
+                    f"The active document is {_describe(doc)}, not a design. "
                     "Call docs_activate with the design's name, or pass "
                     "design_id."
                 )

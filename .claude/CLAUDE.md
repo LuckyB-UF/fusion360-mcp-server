@@ -19,7 +19,7 @@ Claude Code ←(stdio MCP)→ This Server ←(TCP :9876)→ Fusion360MCP Add-in 
 
 ```bash
 uv sync --dev      # install deps
-uv run pytest -v   # run tests (500 tests; the 3 test_deployed_addon_matches_repo cases fail while the installed add-in is older than the repo)
+uv run pytest -v   # run tests (501 tests; the 3 test_deployed_addon_matches_repo cases fail while the installed add-in is older than the repo)
 uv run ruff check  # lint
 ```
 

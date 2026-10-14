@@ -126,6 +126,8 @@ def test_slow_commands_get_long_timeouts():
         "docs_list, then docs_activate with the drawing's name.",
         "The active document is a drawing document, not a design. Call "
         "docs_activate with the design's name, or pass design_id.",
+        "The active document is an electronics document, not a drawing.",
+        "The active document is none (no document is open), not a drawing.",
     ],
 )
 def test_wrong_document_kind_is_classified(message):
@@ -150,7 +152,6 @@ def test_unsaved_design_is_classified():
         "No sheet 3: the drawing has 1 (indices from 0, see drawing_info).",
         "Fusion's drawing export to pdf returned false",
         "'Chainx' is not one of A, B (DimensionStrategyTypes in this build)",
-        "The active document is a other document, not a drawing.",
     ],
 )
 def test_drawing_failures_are_not_design_product_errors(message):
@@ -417,6 +418,13 @@ def test_drawing_ops_refuse_a_design_document(addon):
         with pytest.raises(addon.drawing.DrawingError) as exc:
             call()
         assert classify(str(exc.value))[0] == "WRONG_DOCUMENT_KIND"
+    assert "is a fusion document" in str(exc.value)
+    empty = addon.drawing.DrawingHandler(_app([], None))
+    with pytest.raises(addon.drawing.DrawingError, match="no document is open"):
+        empty.info()
+    with pytest.raises(addon.drawing.DrawingError, match="none") as exc:
+        empty.create()
+    assert classify(str(exc.value))[0] == "WRONG_DOCUMENT_KIND"
 
 
 def test_info_reads_sheets_and_views(addon):

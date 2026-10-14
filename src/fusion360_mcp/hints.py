@@ -12,7 +12,8 @@ import re
 # First match wins. Patterns use re.IGNORECASE.
 _RULES: list[tuple[str, str, list[str]]] = [
     (
-        r"active document is an? \w+ document, not a (?:drawing|design)",
+        r"active document is (?:an? \w+ document|none\b[^,]*), "
+        r"not a (?:drawing|design)",
         "WRONG_DOCUMENT_KIND",
         [
             "Call docs_list to see the open documents and their kind, then "
@@ -99,10 +100,10 @@ _RULES: list[tuple[str, str, list[str]]] = [
         [
             "The active document has no Design product - usually a Drawing "
             "(.f2d), or a document open only in Manufacturing or Simulation.",
-            "execute_code still runs without a design: call "
-            "app.documents.item(i).activate() to switch to a model document.",
-            "Every other tool needs a Design product, so switch the active "
-            "document in Fusion before calling one.",
+            "Call docs_list to see the open documents and their kind, then "
+            "docs_activate a fusion document before calling design tools.",
+            "drawing_* tools work on the drawing itself: enable the drawing "
+            "toolset with fusion_toolsets and keep the drawing active.",
         ],
     ),
     (
