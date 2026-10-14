@@ -31,6 +31,10 @@ LONG_COMMANDS = {
     "ecad_export_gerbers": 120.0,
     "ecad_export_odb": 120.0,
     "docs_open": 60.0,            # downloads the file first
+    "drawing_create": 120.0,      # createDrawing lays out every view
+    "drawing_autodim": 60.0,
+    "drawing_tidy": 60.0,
+    "drawing_export": 120.0,
 }
 
 # A modal dialog freezes the main thread.  For electronics commands, look

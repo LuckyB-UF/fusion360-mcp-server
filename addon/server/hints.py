@@ -15,6 +15,34 @@ import re
 # First match wins. Patterns use re.IGNORECASE.
 _RULES: list[tuple[str, str, list[str]]] = [
     (
+        r"active document is an? \w+ document, not a (?:drawing|design)",
+        "WRONG_DOCUMENT_KIND",
+        [
+            "Call docs_list to see the open documents and their kind, then "
+            "docs_activate the one this tool needs (drawing_* tools need a "
+            "drawing; drawing_create needs a design, or a design_id).",
+            "A drawing that is not open yet can be opened with docs_open, "
+            "or made from a saved design with drawing_create.",
+        ],
+    ),
+    (
+        r"save the design to the cloud first",
+        "DESIGN_NOT_SAVED",
+        [
+            "drawing_create needs the design's cloud file. Ask the user to "
+            "save the design in Fusion, then call drawing_create again.",
+            "Or pass design_id: the file_id of a saved design from docs_list.",
+        ],
+    ),
+    (
+        r"no drawing api|has no drawing\.sheets",
+        "DRAWING_API_UNAVAILABLE",
+        [
+            "This Fusion build lacks the Drawing API calls drawing_* uses; "
+            "update Fusion.",
+        ],
+    ),
+    (
         r"no open document named",
         "DOCUMENT_NOT_FOUND",
         [

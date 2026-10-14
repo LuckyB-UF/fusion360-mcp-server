@@ -32,6 +32,10 @@ _LONG_TIMEOUTS = {
     "ecad_export_gerbers": 135.0,
     "ecad_export_odb": 135.0,
     "docs_open": 75.0,
+    "drawing_create": 135.0,
+    "drawing_autodim": 75.0,
+    "drawing_tidy": 75.0,
+    "drawing_export": 135.0,
 }
 
 
