@@ -45,8 +45,29 @@ def _same(a, b) -> bool:
         return False
 
 
+def cloud_id(data_file):
+    """The cloud file id (``urn:...``) of *data_file*, or None.
+
+    Right after a save Fusion reports the document as saved, but until the
+    upload finishes ``DataFile.id`` is a local cache path, which
+    ``createDrawing`` and ``findFileById`` reject (seen on 2705.1.30).
+    """
+    if data_file is None:
+        return None
+    try:
+        file_id = data_file.id or ""
+        complete = getattr(data_file, "isComplete", True)
+    except Exception:
+        return None
+    return file_id if file_id.startswith("urn:") and complete else None
+
+
 def doc_info(doc, active=None) -> dict:
-    """Name, kind, active and saved flags, and cloud file id of *doc*."""
+    """Name, kind, active and saved flags, and cloud file id of *doc*.
+
+    ``uploading`` is true while a saved document's upload is unfinished;
+    ``file_id`` stays null until then.
+    """
     data_file = None
     try:
         data_file = doc.dataFile
@@ -56,12 +77,14 @@ def doc_info(doc, active=None) -> dict:
         saved = bool(doc.isSaved)
     except Exception:
         saved = False
+    file_id = cloud_id(data_file)
     return {
         "name": doc.name,
         "kind": doc_kind(doc),
         "active": _same(doc, active),
         "saved": saved,
-        "file_id": data_file.id if data_file else None,
+        "uploading": bool(saved and data_file is not None and file_id is None),
+        "file_id": file_id,
     }
 
 

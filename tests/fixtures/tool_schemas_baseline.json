@@ -4718,7 +4718,7 @@
  "docs_list": {
   "name": "docs_list",
   "title": "List Open Documents",
-  "description": "List the open documents: name, kind (fusion, drawing, electronics or other), whether each is active and saved, and its cloud file id (null until saved). Works whatever kind of document is active. Use it before docs_activate, and to find the design id for drawing_create.",
+  "description": "List the open documents: name, kind (fusion, drawing, electronics or other), whether each is active and saved, and its cloud file id (null until saved and uploaded; uploading is true meanwhile). Works whatever kind of document is active. Use it before docs_activate, and to find the design id for drawing_create.",
   "inputSchema": {
    "type": "object",
    "properties": {}

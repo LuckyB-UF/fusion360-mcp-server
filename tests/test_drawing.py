@@ -462,6 +462,19 @@ def test_create_refuses_an_unsaved_or_non_design_document(addon):
         addon.drawing.DrawingHandler(_app([doc], doc)).create()
 
 
+def test_create_waits_for_the_cloud_upload(addon):
+    # Right after a save, DataFile.id is a local cache path (2705.1.30).
+    uploading = FakeDoc("Part", file_id="C:/Users/x/AppData/Local/_Part.f3d")
+    handler = addon.drawing.DrawingHandler(_app([uploading], uploading))
+    with pytest.raises(addon.drawing.DrawingError) as exc:
+        handler.create()
+    assert classify(str(exc.value))[0] == "DESIGN_UPLOADING"
+    info = addon.documents.doc_info(uploading, uploading)
+    assert info["file_id"] is None and info["uploading"] is True
+    done = addon.documents.doc_info(FakeDoc("Part"), None)
+    assert done["file_id"] == "urn:d" and done["uploading"] is False
+
+
 def test_create_rejects_an_unknown_setting(addon):
     design = FakeDoc("Part v1")
     handler = addon.drawing.DrawingHandler(_app([design], design))

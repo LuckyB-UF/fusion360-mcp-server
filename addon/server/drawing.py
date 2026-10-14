@@ -246,6 +246,12 @@ class DrawingHandler:
                     "its cloud file."
                 )
             design_file = doc.dataFile
+            if _docs.cloud_id(design_file) is None:
+                raise DrawingError(
+                    "The design's cloud upload has not finished yet: wait a "
+                    "few seconds, check docs_list until it shows a file_id, "
+                    "then call drawing_create again."
+                )
 
         manager = drawing.DrawingManager.get()
         inp = manager.createDrawingInput(

@@ -24,6 +24,15 @@ _RULES: list[tuple[str, str, list[str]]] = [
         ],
     ),
     (
+        r"cloud upload has not finished",
+        "DESIGN_UPLOADING",
+        [
+            "Fusion saves locally first and uploads in the background. Call "
+            "docs_list every few seconds until the design shows a file_id "
+            "and uploading is false, then call drawing_create again.",
+        ],
+    ),
+    (
         r"save the design to the cloud first",
         "DESIGN_NOT_SAVED",
         [

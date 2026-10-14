@@ -251,7 +251,8 @@ TOOLS: list[dict] = [
         "description": (
             "List the open documents: name, kind (fusion, drawing, "
             "electronics or other), whether each is active and saved, and "
-            "its cloud file id (null until saved). Works whatever kind of "
+            "its cloud file id (null until saved and uploaded; uploading is "
+            "true meanwhile). Works whatever kind of "
             "document is active. Use it before docs_activate, and to find "
             "the design id for drawing_create."
         ),
@@ -416,6 +417,7 @@ _MOCK_DOCS = [
         "kind": "fusion",
         "active": True,
         "saved": True,
+        "uploading": False,
         "file_id": "urn:adsk.wipprod:dm.lineage:mockdesign",
     },
     {
@@ -423,6 +425,7 @@ _MOCK_DOCS = [
         "kind": "drawing",
         "active": False,
         "saved": True,
+        "uploading": False,
         "file_id": "urn:adsk.wipprod:dm.lineage:mockdrawing",
     },
 ]
@@ -460,6 +463,7 @@ def _docs_open(p: dict) -> dict:
         "kind": "fusion",
         "active": True,
         "saved": True,
+        "uploading": False,
         "file_id": file_id,
     }
 

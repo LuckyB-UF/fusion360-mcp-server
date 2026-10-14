@@ -1035,7 +1035,9 @@ class TestMockDocuments:
             "fusion", "drawing", "electronics", "other"
         }
         for doc in result["documents"]:
-            assert set(doc) == {"name", "kind", "active", "saved", "file_id"}
+            assert set(doc) == {
+                "name", "kind", "active", "saved", "uploading", "file_id"
+            }
         assert [d for d in result["documents"] if d["active"]] == [
             result["active"]
         ]

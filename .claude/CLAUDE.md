@@ -85,6 +85,7 @@ A command that blocks Fusion's main thread freezes the whole app, and nothing ou
 
 - Drive Fusion through the add-in (TCP 9876), one step per call, each with a timeout: the client timeout, or the `LONG_COMMANDS` value (`addon/server/event_bridge.py`) for slow commands. Never run a multi-step script in the Text Commands palette: it runs on the main thread with no timeout and no way out.
 - Test only in new, unsaved documents. Close every document the test opened with `close(False)` (without saving), also after a failure, and never open, change or save a real design.
+- A test that needs a cloud file (`drawing_create` needs a saved design) saves only into a scratch project the owner has set aside for tests, never into a real project. Wait for the upload: `docs_list` shows `file_id` once it has finished. Fusion opening the new drawing may replace an empty, unmodified Untitled document.
 - Report each step's result (passed, failed with its error, or timed out) rather than one overall verdict, so a hang points at the exact step.
 - When a read might hang or crash Fusion, write a flushed log line before the read, so the last line names the culprit.
 - If a modal dialog blocks Fusion, capture its text before dismissing it (`dialog_guard`) and report it.
