@@ -121,7 +121,32 @@ Call the `ping` tool from your client. If it returns `{"pong": true}`, everythin
 2. Stop the add-in in Fusion (Shift+S → Add-Ins → Fusion360MCP → Stop)
 3. Delete the add-in folder from Fusion's AddIns directory
 
-## Available Tools (89)
+## Toolsets
+
+The server has 128 Fusion tools plus `fusion_toolsets`. Listing them all costs about 20k tokens of schema, so they are grouped into **toolsets** and only the enabled ones are listed. The default is `core,modeling,inspection`: 43 tools, about 6k tokens.
+
+| Toolset | Tools | Default | What's in it |
+|---------|------:|:-------:|--------------|
+| `core` | 12 | always | `ping`, `get_scene_info`, `get_object_info`, `list_components`, `get_design_type`, `set_design_type`, `undo`, `execute_code`, `render_view`, `export`, `import_mesh`, `fusion_toolsets` |
+| `modeling` | 25 | yes | Sketches, constraints, dimensions, curve edits, `project_geometry`; `extrude`, `revolve`, `fillet`, `chamfer`, `shell`, `mirror`, `create_hole`, patterns; `boolean_operation`, `move_body`, `rename_body` |
+| `inspection` | 6 | yes | `measure_distance`, `measure_angle`, `get_bounding_box`, `get_physical_properties`, `create_section_analysis`, `check_interference` |
+| `modeling_advanced` | 27 | no | `sweep`, `loft`, threads, draft/split/offset/scale, suppress/unsuppress, direct primitives, construction geometry, user parameters, `set_appearance`, `export_stl`/`export_step`/`export_f3d`/`export_view_sheet`, `delete_all` |
+| `assembly` | 4 | no | `create_component`, `add_joint`, `create_as_built_joint`, `create_rigid_group` |
+| `surface_sheetmetal` | 9 | no | Surface patch/stitch/thicken/ruled/trim; sheet-metal flange/bend/flat pattern/unfold |
+| `cam` | 8 | no | `cam_*` setups, operations, toolpaths, post-processing |
+| `electronics` | 38 | no | `ecad_*` schematic + PCB tools (lengths in mm) |
+
+Choose toolsets at start-up with `--toolsets` (comma list, or `all`) or the `FUSION_MCP_TOOLSETS` environment variable. `core` is always on:
+
+```bash
+claude mcp add fusion360 -- uvx fusion360-mcp-server --mode socket --toolsets core,modeling,inspection,cam
+```
+
+An agent can switch toolsets while it runs. `fusion_toolsets` with no arguments lists every toolset with its tool count and whether it's on. `fusion_toolsets {"enable": ["cam"]}` (or `"disable"`, or `["all"]`) changes the set. The server then sends `notifications/tools/list_changed`, so clients that support it re-fetch the tool list. Calling a tool whose toolset is off returns an error that names the `fusion_toolsets` call that turns it on.
+
+## Available Tools
+
+Grouped by function below. The [Toolsets](#toolsets) table shows which toolset each one belongs to. The 38 `ecad_*` electronics tools aren't listed here; their schemas describe them.
 
 ### Scene & Query
 | Tool | Description |
@@ -282,12 +307,13 @@ Call the `ping` tool from your client. If it returns `{"pong": true}`, everythin
 - **Prompts** — `create-box`, `model-threaded-bolt`, `sheet-metal-enclosure` workflow templates
 - **Structured errors** — tool results include `isError=True` when the add-in reports failures
 - **Mock mode** — `--mode mock` returns plausible test data without Fusion running (all responses include `"mode": "mock"`)
+- **Toolsets** — only enabled toolsets are listed; `fusion_toolsets` switches them at runtime and the server sends `notifications/tools/list_changed` (it declares the `tools.listChanged` capability)
 
 ## Development
 
 ```bash
 uv sync --dev       # install deps
-uv run pytest -v    # run tests (171 tests)
+uv run pytest -v    # run tests
 uv run ruff check   # lint
 ```
 

@@ -2,7 +2,7 @@
 
 ## Overview
 
-This is an MCP server (81 tools) that connects AI coding agents to Autodesk Fusion 360 for CAD automation. It consists of two pieces:
+This is an MCP server (128 Fusion tools in 8 toolsets, plus `fusion_toolsets`) that connects AI coding agents to Autodesk Fusion 360 for CAD automation. It consists of two pieces:
 
 1. **MCP Server** (this repo) — speaks MCP protocol over stdio, forwards commands to Fusion via TCP
 2. **Fusion 360 Add-in** — runs inside Fusion, executes commands on the main thread via CustomEvent bridge
@@ -16,7 +16,30 @@ Claude Code ──stdio──> MCP Server ──TCP :9876──> Fusion Add-in �
 
 The add-in uses a CustomEvent + work queue pattern to safely dispatch all Fusion API calls to the main thread. Socket threads submit work items and block on a per-item `threading.Event` until the main thread completes execution.
 
-## Available tools (80)
+## Toolsets: not every tool is listed
+
+Tools are grouped into toolsets, and only enabled ones are listed. The default is `core,modeling,inspection` (43 tools). If a tool you need isn't in your list, it's in a disabled toolset:
+
+- Call `fusion_toolsets` with no arguments to see every toolset, its tool count and whether it's on.
+- Call `fusion_toolsets {"enable": ["cam"]}` to turn one on. `["all"]` turns on everything; `"disable"` turns toolsets off. `core` is always on.
+- Calling a tool from a disabled toolset returns an error that names the exact `fusion_toolsets` call to make.
+
+| Toolset | Default | Contents |
+|---------|:-------:|----------|
+| `core` | always | ping, scene/object info, list_components, design type, undo, execute_code, render_view, export, import_mesh, fusion_toolsets |
+| `modeling` | yes | sketch tools, constraints, dimensions, curve edits, project_geometry; extrude, revolve, fillet, chamfer, shell, mirror, create_hole, patterns; boolean_operation, move_body, rename_body |
+| `inspection` | yes | measure_distance, measure_angle, get_bounding_box, get_physical_properties, create_section_analysis, check_interference |
+| `modeling_advanced` | no | sweep, loft, create_thread, draft/split/offset/scale, suppress/unsuppress, direct primitives, construction plane/axis, user parameters, set_appearance, export_stl/step/f3d/view_sheet, delete_all |
+| `assembly` | no | create_component, add_joint, create_as_built_joint, create_rigid_group |
+| `surface_sheetmetal` | no | surface and sheet-metal tools |
+| `cam` | no | cam_* |
+| `electronics` | no | ecad_* (lengths in mm) |
+
+The server is started with `--toolsets` (comma list or `all`) or `FUSION_MCP_TOOLSETS` to change the default.
+
+## Available tools
+
+The tables below are grouped by function, not by toolset. Electronics (`ecad_*`) tools aren't listed here.
 
 ### Scene & Query
 | Tool | Description |
@@ -207,6 +230,7 @@ Known `error_kind` values: `PROFILE_NOT_CLOSED`, `SKETCH_NOT_FOUND`, `BODY_NOT_F
 - **Prompts** — `create-box`, `model-threaded-bolt`, `sheet-metal-enclosure` workflow templates
 - **Structured errors** — `isError=True` when the add-in reports failures. Error results carry `error_kind`, `hints`, and a traceback so the agent can branch on failure mode rather than parsing prose (see _Response shape_ above).
 - **Mock mode** — `--mode mock` returns test data without Fusion running
+- **Toolsets** — `fusion_toolsets` changes which tools are listed and sends `notifications/tools/list_changed`
 
 ## Important constraints
 
