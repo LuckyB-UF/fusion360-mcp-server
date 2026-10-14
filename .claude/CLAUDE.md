@@ -49,3 +49,11 @@ uv run ruff check  # lint
 - `ping` is the health check — it never touches the Fusion API
 - Every tool has annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`)
 - Every tool has a mock handler so `--mode mock` works without Fusion running
+
+## Testing in live Fusion
+
+A command that blocks Fusion's main thread freezes the whole app, and nothing outside Fusion can recover it except killing the process. So:
+
+- Drive Fusion through the add-in (TCP 9876), one step per call, each with a timeout. Never run a multi-step script in the Text Commands palette: it runs on the main thread with no timeout and no way out.
+- Test only in new, unsaved documents. Close every document the test opened with `close(False)` (without saving), and never open, change or save a real design.
+- Report each step's result (passed, failed with its error, or timed out) rather than one overall verdict, so a hang points at the exact step.
