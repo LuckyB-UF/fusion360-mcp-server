@@ -123,11 +123,11 @@ Call the `ping` tool from your client. If it returns `{"pong": true}`, everythin
 
 ## Toolsets
 
-The server has 128 Fusion tools plus `fusion_toolsets`. Listing them all costs about 20k tokens of schema, so they are grouped into **toolsets** and only the enabled ones are listed. The default is `core,modeling,inspection`: 47 tools, about 6.4k tokens.
+The server has 136 Fusion tools plus `fusion_toolsets`. Listing them all costs about 21k tokens of schema, so they are grouped into **toolsets** and only the enabled ones are listed. The default is `core,modeling,inspection`: 50 tools, about 6.8k tokens.
 
 | Toolset | Tools | Default | What's in it |
 |---------|------:|:-------:|--------------|
-| `core` | 12 | always | `ping`, `get_scene_info`, `get_object_info`, `list_components`, `get_design_type`, `set_design_type`, `undo`, `execute_code`, `render_view`, `export`, `import_mesh`, `fusion_toolsets` |
+| `core` | 15 | always | `ping`, `get_scene_info`, `get_object_info`, `list_components`, `get_design_type`, `set_design_type`, `undo`, `execute_code`, `render_view`, `export`, `import_mesh`, `docs_list`, `docs_activate`, `docs_open`, `fusion_toolsets` |
 | `modeling` | 29 | yes | Sketches, constraints, dimensions, curve edits, `project_geometry`; `extrude`, `revolve`, `fillet`, `chamfer`, `shell`, `mirror`, `create_hole`, patterns; `boolean_operation`, `move_body`, `rename_body`; user parameters (`get_parameters`, `create_parameter`, `set_parameter`, `delete_parameter`) |
 | `inspection` | 6 | yes | `measure_distance`, `measure_angle`, `get_bounding_box`, `get_physical_properties`, `create_section_analysis`, `check_interference` |
 | `modeling_advanced` | 23 | no | `sweep`, `loft`, threads, draft/split/offset/scale, suppress/unsuppress, direct primitives, construction geometry, `set_appearance`, `export_stl`/`export_step`/`export_f3d`/`export_view_sheet`, `delete_all` |
@@ -135,6 +135,7 @@ The server has 128 Fusion tools plus `fusion_toolsets`. Listing them all costs a
 | `surface_sheetmetal` | 9 | no | Surface patch/stitch/thicken/ruled/trim; sheet-metal flange/bend/flat pattern/unfold |
 | `cam` | 8 | no | `cam_*` setups, operations, toolpaths, post-processing |
 | `electronics` | 38 | no | `ecad_*` schematic + PCB tools (lengths in mm) |
+| `drawing` | 5 | no | `drawing_info`, `drawing_create`, `drawing_autodim`, `drawing_tidy`, `drawing_export`: Fusion drawings (.f2d) of a saved design |
 
 Choose toolsets at start-up with `--toolsets` (comma list, or `all`) or the `FUSION_MCP_TOOLSETS` environment variable. `core` is always on:
 
@@ -282,6 +283,22 @@ Grouped by function below. The [Toolsets](#toolsets) table shows which toolset e
 | `export_step` | Export body as STEP (supports bodies inside components) |
 | `export_f3d` | Export design as Fusion archive |
 | `export` | Unified dispatcher — routes to `export_stl`/`export_step`/`export_f3d` based on explicit `format` or file-extension inference |
+
+### Documents
+| Tool | Description |
+|------|-------------|
+| `docs_list` | Open documents: name, kind (fusion/drawing/electronics/other), active and saved flags, cloud file id |
+| `docs_activate` | Make an open document active, by name (with or without the `vN` suffix) |
+| `docs_open` | Open a cloud file by id and make it active |
+
+### Drawings
+| Tool | Description |
+|------|-------------|
+| `drawing_info` | Sheets of the active drawing and each one's views by type |
+| `drawing_create` | Fusion's automatic Create Drawing from a saved design (optional template); writes a new drawing file to the cloud |
+| `drawing_autodim` | Auto-dimension one view or every view of a sheet by strategy and datum corner |
+| `drawing_tidy` | Fusion's tidy-up: re-arrange views, dimensions and labels to remove overlaps |
+| `drawing_export` | Export the active drawing to PDF, DXF or DWG |
 
 ### CAM / Manufacturing
 | Tool | Description |
