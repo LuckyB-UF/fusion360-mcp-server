@@ -1,6 +1,6 @@
 """Tests for the tool registry."""
 
-from fusion360_mcp.tools import TOOLS, get_tool_by_name, get_tool_list
+from fusion360_mcp.tools import SERVER_TOOLS, TOOLS, get_tool_by_name, get_tool_list
 from fusion360_mcp.toolsets.electronics import TOOLS as ECAD_TOOLS
 
 
@@ -42,7 +42,7 @@ def test_no_duplicate_tool_names():
 
 def test_get_tool_list_returns_mcp_types():
     tools = get_tool_list()
-    assert len(tools) == len(TOOLS)
+    assert len(tools) == len(TOOLS) + len(SERVER_TOOLS)
     for tool in tools:
         assert hasattr(tool, "name")
         assert hasattr(tool, "inputSchema")

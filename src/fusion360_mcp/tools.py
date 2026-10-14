@@ -6,11 +6,22 @@ the read-only / destructive / idempotent flags set inline.  This module
 assembles them, expands the flags into full MCP annotations and indexes the
 tools by name.  The ``inputSchema`` is JSON Schema that the MCP SDK
 validates before forwarding arguments to the Fusion360MCP add-in.
+
+``TOOLS`` are the add-in's commands.  ``SERVER_TOOLS`` (``fusion_toolsets``)
+are answered by the server itself and never forwarded.
 """
+
+from collections.abc import Collection
 
 import mcp.types as types
 
 from .toolsets import DOMAINS
+from .toolsets._flags import IDEMPOTENT
+
+# Toolset name -> one-line summary, in listing order.
+TOOLSETS: dict[str, str] = {d.TOOLSET: d.SUMMARY for d in DOMAINS}
+ALWAYS_ON = "core"
+DEFAULT_TOOLSETS = ("core", "modeling", "inspection")
 
 _ANNOTATION_KEYS = ("readOnlyHint", "destructiveHint", "idempotentHint")
 
@@ -40,6 +51,44 @@ for _domain in DOMAINS:
         _BY_NAME[_name] = _t
         TOOLSET_OF[_name] = _domain.TOOLSET
 
+_OPTIONAL = [name for name in TOOLSETS if name != ALWAYS_ON]
+
+SERVER_TOOLS: list[dict] = [
+    {
+        "name": "fusion_toolsets",
+        "title": "Fusion Toolsets",
+        "description": (
+            "List the toolsets (groups of tools), their tool counts and which "
+            "are enabled, or turn toolsets on/off. Only tools of enabled "
+            "toolsets are listed; core is always on. Not listed by default: "
+            "modeling_advanced (sweep/loft, threads, primitives, construction "
+            "geometry, parameters, appearance, per-format exports, "
+            "delete_all), assembly, surface_sheetmetal, cam, electronics."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "enable": {
+                    "type": "array",
+                    "items": {"type": "string", "enum": [*_OPTIONAL, "all"]},
+                    "description": "Toolsets to turn on ('all' for every one)",
+                },
+                "disable": {
+                    "type": "array",
+                    "items": {"type": "string", "enum": [*_OPTIONAL, "all"]},
+                    "description": "Toolsets to turn off ('all' leaves core)",
+                },
+            },
+        },
+        "annotations": IDEMPOTENT,
+    },
+]
+
+for _t in SERVER_TOOLS:
+    _t["annotations"] = _annotations(_t["annotations"])
+    _BY_NAME[_t["name"]] = _t
+    TOOLSET_OF[_t["name"]] = ALWAYS_ON
+
 # Name sets by side-effect profile (connection.py retries only _IDEMPOTENT).
 _READ_ONLY = {t["name"] for t in TOOLS if t["annotations"]["readOnlyHint"]}
 _DESTRUCTIVE = {t["name"] for t in TOOLS if t["annotations"]["destructiveHint"]}
@@ -56,9 +105,13 @@ def _to_mcp(t: dict) -> types.Tool:
     )
 
 
-def get_tool_list() -> list[types.Tool]:
-    """Convert tool dicts to MCP Tool objects."""
-    return [_to_mcp(t) for t in TOOLS]
+def get_tool_list(toolsets: Collection[str] | None = None) -> list[types.Tool]:
+    """MCP Tool objects for *toolsets* (every toolset when None)."""
+    return [
+        _to_mcp(t)
+        for t in SERVER_TOOLS + TOOLS
+        if toolsets is None or TOOLSET_OF[t["name"]] in toolsets
+    ]
 
 
 def get_tool_by_name(name: str) -> dict | None:

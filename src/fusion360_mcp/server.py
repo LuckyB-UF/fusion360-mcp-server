@@ -2,7 +2,8 @@
 Fusion360 MCP Server — stdio transport.
 
 Bridges Claude Code ↔ Fusion 360 add-in via TCP socket on localhost.
-Supports ``--mode mock`` for testing without Fusion running.
+Supports ``--mode mock`` for testing without Fusion running, and
+``--toolsets`` to choose which groups of tools are listed.
 """
 
 import json
@@ -13,11 +14,13 @@ import re
 import anyio
 import click
 import mcp.types as types
-from mcp.server.lowlevel import Server
+from mcp.server.lowlevel import NotificationOptions, Server
+from mcp.server.models import InitializationOptions
 
 from .connection import get_connection, reset_connection
 from .mock import mock_command
-from .tools import get_tool_by_name, get_tool_list
+from .tools import DEFAULT_TOOLSETS, get_tool_by_name
+from .toolset_state import ToolsetState, parse_toolsets
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
@@ -137,38 +140,21 @@ def _format_result(
     return content
 
 
-@click.command()
-@click.option(
-    "--mode",
-    type=click.Choice(["socket", "mock"]),
-    default="socket",
-    help="'socket' connects to Fusion, 'mock' returns test data",
-)
-@click.option(
-    "--host",
-    type=str,
-    default=lambda: os.environ.get("FUSION_MCP_HOST", "localhost"),
-    help=(
-        "Host where the Fusion 360 add-in listens (env: FUSION_MCP_HOST). "
-        "Use the Windows LAN IP when the MCP server runs on a different machine."
-    ),
-)
-@click.option(
-    "--port",
-    type=int,
-    default=lambda: int(os.environ.get("FUSION_MCP_PORT", "9876")),
-    help="TCP port the Fusion 360 add-in listens on (env: FUSION_MCP_PORT)",
-)
-def main(mode: str, host: str, port: int) -> int:
-    """Fusion360 MCP Server — connects Claude to Fusion 360."""
-
+def build_server(
+    mode: str,
+    host: str = "localhost",
+    port: int = 9876,
+    toolsets: set[str] | None = None,
+) -> Server:
+    """Create the MCP server; *toolsets* are the ones listed at start."""
+    state = ToolsetState(toolsets or set(DEFAULT_TOOLSETS))
     app = Server("fusion360-mcp-server")
 
     # ── tools ────────────────────────────────────────────────────────
 
     @app.list_tools()
     async def list_tools() -> list[types.Tool]:
-        return get_tool_list()
+        return state.tools()
 
     @app.call_tool()
     async def call_tool(
@@ -178,6 +164,21 @@ def main(mode: str, host: str, port: int) -> int:
         tool_def = get_tool_by_name(name)
         if not tool_def:
             raise ValueError(f"Unknown tool: {name}")
+
+        # Answered here in both modes; never forwarded to the add-in.
+        if name == "fusion_toolsets":
+            text, changed = state.apply(arguments)
+            if changed:
+                await app.request_context.session.send_tool_list_changed()
+            return [types.TextContent(type="text", text=text)]
+
+        if not state.is_enabled(name):
+            return types.CallToolResult(
+                content=[
+                    types.TextContent(type="text", text=state.disabled_message(name))
+                ],
+                isError=True,
+            )
 
         try:
             result = _send(mode, name, arguments, host=host, port=port)
@@ -439,13 +440,62 @@ def main(mode: str, host: str, port: int) -> int:
             ],
         )
 
-    # ── run ──────────────────────────────────────────────────────────
+    return app
+
+
+def initialization_options(app: Server) -> InitializationOptions:
+    """Declare ``tools.listChanged``: fusion_toolsets changes the tool list."""
+    return app.create_initialization_options(
+        notification_options=NotificationOptions(tools_changed=True)
+    )
+
+
+@click.command()
+@click.option(
+    "--mode",
+    type=click.Choice(["socket", "mock"]),
+    default="socket",
+    help="'socket' connects to Fusion, 'mock' returns test data",
+)
+@click.option(
+    "--host",
+    type=str,
+    default=lambda: os.environ.get("FUSION_MCP_HOST", "localhost"),
+    help=(
+        "Host where the Fusion 360 add-in listens (env: FUSION_MCP_HOST). "
+        "Use the Windows LAN IP when the MCP server runs on a different machine."
+    ),
+)
+@click.option(
+    "--port",
+    type=int,
+    default=lambda: int(os.environ.get("FUSION_MCP_PORT", "9876")),
+    help="TCP port the Fusion 360 add-in listens on (env: FUSION_MCP_PORT)",
+)
+@click.option(
+    "--toolsets",
+    type=str,
+    default=lambda: os.environ.get(
+        "FUSION_MCP_TOOLSETS", ",".join(DEFAULT_TOOLSETS)
+    ),
+    help=(
+        "Comma-separated toolsets to list, or 'all' (env: FUSION_MCP_TOOLSETS). "
+        "core is always on; agents can switch others with fusion_toolsets."
+    ),
+)
+def main(mode: str, host: str, port: int, toolsets: str) -> int:
+    """Fusion360 MCP Server — connects Claude to Fusion 360."""
+    try:
+        enabled = parse_toolsets(toolsets)
+    except ValueError as exc:
+        raise click.BadParameter(str(exc), param_hint="--toolsets") from exc
+    app = build_server(mode, host, port, enabled)
 
     from mcp.server.stdio import stdio_server
 
     async def arun():
         async with stdio_server() as streams:
-            await app.run(streams[0], streams[1], app.create_initialization_options())
+            await app.run(streams[0], streams[1], initialization_options(app))
 
     anyio.run(arun)
     return 0
