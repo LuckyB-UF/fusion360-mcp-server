@@ -119,7 +119,9 @@ def _deployed_addon_dir() -> Path | None:
     return target if target.is_dir() else None
 
 
-@pytest.mark.parametrize("filename", ["command_handler.py", "hints.py", "event_bridge.py"])
+@pytest.mark.parametrize(
+    "filename", ["command_handler.py", "hints.py", "event_bridge.py"]
+)
 def test_deployed_addon_matches_repo(filename):
     """The installed add-in must be byte-identical to this repo's addon/server."""
     deployed = _deployed_addon_dir()

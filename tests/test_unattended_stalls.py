@@ -161,7 +161,6 @@ class TestExecuteCodeSurvivesWithoutDesign:
         src = self._execute_code_source()
         for match in re.finditer(r"self\._root\(\)", src):
             line_start = src.rfind("\n", 0, match.start()) + 1
-            line = src[line_start : match.end()]
             assert "try" in src[max(0, line_start - 200) : match.start()], (
                 "self._root() must be guarded too — it calls _design() and "
                 "raises the same way"
