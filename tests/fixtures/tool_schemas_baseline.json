@@ -4772,5 +4772,175 @@
    "destructiveHint": false,
    "idempotentHint": false
   }
+ },
+ "drawing_info": {
+  "name": "drawing_info",
+  "title": "Drawing Info",
+  "description": "Summary of the active drawing: name, saved flag, cloud file id, and each sheet (index, name, active) with its views (index, type). Works on the active document, which must be a drawing: use docs_list and docs_activate to switch to it.",
+  "inputSchema": {
+   "type": "object",
+   "properties": {}
+  },
+  "annotations": {
+   "readOnlyHint": true,
+   "destructiveHint": false,
+   "idempotentHint": true
+  }
+ },
+ "drawing_create": {
+  "name": "drawing_create",
+  "title": "Create Drawing",
+  "description": "Run Fusion's automatic Create Drawing on a design: creates a new drawing file in the design's cloud folder, laid out with views by Fusion. Uses the active design, which must be saved to the cloud, unless design_id is given. Each call creates another drawing file, so call it once and check docs_list before retrying after a timeout.",
+  "inputSchema": {
+   "type": "object",
+   "properties": {
+    "design_id": {
+     "type": "string",
+     "description": "Cloud file id of the design (default: the active document, which must be a saved design)"
+    },
+    "template_id": {
+     "type": "string",
+     "description": "Cloud file id of a drawing template"
+    },
+    "open": {
+     "type": "boolean",
+     "default": false,
+     "description": "Open the new drawing and make it the active document"
+    },
+    "settings": {
+     "type": "object",
+     "additionalProperties": {
+      "type": [
+       "string",
+       "number",
+       "boolean"
+      ]
+     },
+     "description": "Extra properties to set on the API input object, as {property: value}; dotted names walk sub-objects. A string that names an adsk.drawing enum member (e.g. 'A3SheetSize') is set as that member. Numbers are passed to the API unchanged, in its own units."
+    }
+   }
+  },
+  "annotations": {
+   "readOnlyHint": false,
+   "destructiveHint": false,
+   "idempotentHint": false
+  }
+ },
+ "drawing_autodim": {
+  "name": "drawing_autodim",
+  "title": "Auto-Dimension Drawing Views",
+  "description": "Run Fusion's auto-dimension (Sheet.autoDimension) on one view or every view of a sheet. Fusion chooses what to dimension and where, by the strategy, from the datum corner; the API cannot place a single chosen dimension. Run drawing_tidy afterwards to clear overlaps. Works on the active document, which must be a drawing: use docs_list and docs_activate to switch to it.",
+  "inputSchema": {
+   "type": "object",
+   "properties": {
+    "sheet": {
+     "type": "integer",
+     "minimum": 0,
+     "description": "Sheet index from 0, as drawing_info lists them (default: the active sheet)"
+    },
+    "view": {
+     "type": "integer",
+     "minimum": 0,
+     "description": "View index from 0 on the sheet, as drawing_info lists them (default: every view)"
+    },
+    "strategy": {
+     "type": "string",
+     "enum": [
+      "automatic",
+      "baseline",
+      "chain",
+      "ordinate",
+      "overall",
+      "symmetric"
+     ],
+     "description": "Dimension strategy (DimensionStrategyTypes); default: Fusion's"
+    },
+    "datum": {
+     "type": "string",
+     "enum": [
+      "bottom_left",
+      "bottom_right",
+      "top_left",
+      "top_right"
+     ],
+     "description": "Datum corner the dimensions run from (DatumPositionsTypes); default: Fusion's"
+    },
+    "settings": {
+     "type": "object",
+     "additionalProperties": {
+      "type": [
+       "string",
+       "number",
+       "boolean"
+      ]
+     },
+     "description": "Extra properties to set on the API input object, as {property: value}; dotted names walk sub-objects. A string that names an adsk.drawing enum member (e.g. 'A3SheetSize') is set as that member. Numbers are passed to the API unchanged, in its own units."
+    }
+   }
+  },
+  "annotations": {
+   "readOnlyHint": false,
+   "destructiveHint": false,
+   "idempotentHint": false
+  }
+ },
+ "drawing_tidy": {
+  "name": "drawing_tidy",
+  "title": "Tidy Drawing Sheet",
+  "description": "Run Fusion's tidy-up (Sheet.tidyUp) on a sheet: it re-arranges views, dimensions and labels to remove overlaps. Works on the active document, which must be a drawing: use docs_list and docs_activate to switch to it.",
+  "inputSchema": {
+   "type": "object",
+   "properties": {
+    "sheet": {
+     "type": "integer",
+     "minimum": 0,
+     "description": "Sheet index from 0, as drawing_info lists them (default: the active sheet)"
+    }
+   }
+  },
+  "annotations": {
+   "readOnlyHint": false,
+   "destructiveHint": false,
+   "idempotentHint": false
+  }
+ },
+ "drawing_export": {
+  "name": "drawing_export",
+  "title": "Export Drawing",
+  "description": "Export the active drawing to PDF, DXF or DWG. Writes the file (replacing one already at path) and creates missing folders; the drawing itself is unchanged. Works on the active document, which must be a drawing: use docs_list and docs_activate to switch to it.",
+  "inputSchema": {
+   "type": "object",
+   "required": [
+    "path"
+   ],
+   "properties": {
+    "path": {
+     "type": "string",
+     "description": "Absolute file-system path of the output file"
+    },
+    "format": {
+     "type": "string",
+     "enum": [
+      "pdf",
+      "dxf",
+      "dwg"
+     ],
+     "description": "Output format (default: from path's extension)"
+    },
+    "line_weights": {
+     "type": "boolean",
+     "description": "PDF only: print with line weights (default true)"
+    },
+    "sheet_range": {
+     "type": "string",
+     "description": "PDF only: sheets to export, e.g. '1-2' (default: all)"
+    }
+   }
+  },
+  "annotations": {
+   "readOnlyHint": false,
+   "destructiveHint": false,
+   "idempotentHint": false
+  }
  }
 }

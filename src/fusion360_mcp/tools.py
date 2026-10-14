@@ -63,7 +63,8 @@ SERVER_TOOLS: list[dict] = [
             "toolsets are listed; core is always on. Not listed by default: "
             "modeling_advanced (sweep/loft, threads, primitives, construction "
             "geometry, appearance, per-format exports, delete_all), assembly, "
-            "surface_sheetmetal, cam, electronics."
+            "surface_sheetmetal, cam, electronics, drawing (Fusion drawings: "
+            "create, auto-dimension, tidy, export)."
         ),
         "inputSchema": {
             "type": "object",

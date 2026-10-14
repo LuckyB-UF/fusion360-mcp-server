@@ -72,7 +72,7 @@ def test_default_listing_is_core_modeling_inspection():
 
 def test_all_lists_every_tool():
     tools = ToolsetState(parse_toolsets("all")).tools()
-    assert len(tools) == 131 + 1
+    assert len(tools) == 136 + 1
     assert _names(tools) == {t["name"] for t in TOOLS} | {"fusion_toolsets"}
 
 
@@ -85,8 +85,8 @@ def test_parse_adds_core_and_ignores_case_and_spaces():
 
 
 def test_parse_rejects_unknown_toolsets():
-    with pytest.raises(ValueError, match="drawing"):
-        parse_toolsets("core,drawing")
+    with pytest.raises(ValueError, match="nonesuch"):
+        parse_toolsets("core,nonesuch")
 
 
 def test_state_cannot_disable_core():
@@ -177,7 +177,7 @@ def test_cli_rejects_unknown_toolset_from_flag_or_env():
     from fusion360_mcp.server import main
 
     runner = CliRunner()
-    result = runner.invoke(main, ["--mode", "mock", "--toolsets", "drawing"])
-    assert result.exit_code == 2 and "drawing" in result.output
+    result = runner.invoke(main, ["--mode", "mock", "--toolsets", "nonesuch"])
+    assert result.exit_code == 2 and "nonesuch" in result.output
     result = runner.invoke(main, ["--mode", "mock"], env={"FUSION_MCP_TOOLSETS": "x"})
     assert result.exit_code == 2 and "unknown toolset" in result.output

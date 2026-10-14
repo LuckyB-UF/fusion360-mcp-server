@@ -10,6 +10,7 @@ from . import (
     assembly,
     cam,
     core,
+    drawing,
     electronics,
     inspection,
     modeling,
@@ -26,4 +27,5 @@ DOMAINS = (
     surface_sheetmetal,
     cam,
     electronics,
+    drawing,
 )

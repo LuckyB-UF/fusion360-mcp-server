@@ -58,9 +58,9 @@ def test_get_tool_by_name_missing():
 
 
 def test_tool_count():
-    """131 add-in commands; which ones is checked against the add-in's own
+    """136 add-in commands; which ones is checked against the add-in's own
     dispatch tables in test_toolset_wiring.py."""
-    assert len(TOOLS) == 131
+    assert len(TOOLS) == 136
 
 
 def test_all_tools_have_annotations():
